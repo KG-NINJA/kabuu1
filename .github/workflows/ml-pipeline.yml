@@ -220,7 +220,7 @@ jobs:
           cat DEPLOYMENT_REPORT.md
 
       - name: Upload deployment report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: deployment-report
           path: DEPLOYMENT_REPORT.md
