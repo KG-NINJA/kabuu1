@@ -19,6 +19,20 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
+  # ========== アーティファクト クリーンアップ ==========
+  cleanup-artifacts:
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Delete old artifacts
+        uses: geekyeggo/delete-artifact@v2
+        with:
+          name: |
+            test-results
+            ml-pipeline-results
+          failOnError: false
+
   # ========== ビルド & テスト ==========
   build:
     runs-on: ubuntu-latest
@@ -137,15 +151,13 @@ jobs:
           find logs/ -type f -name "*.log" 2>/dev/null | head -5
 
       - name: Upload pipeline results
-        if: always()
-        uses: actions/upload-artifact@v3
+        if: always() && failure()
+        uses: actions/upload-artifact@v4
         with:
           name: ml-pipeline-results
           path: |
-            data/
             logs/
-            performance_metrics.json
-          retention-days: 30
+          retention-days: 1
         continue-on-error: true
 
   # ========== Docker ビルド ==========
@@ -219,11 +231,11 @@ jobs:
           cat DEPLOYMENT_REPORT.md
 
       - name: Upload deployment report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: deployment-report
           path: DEPLOYMENT_REPORT.md
-          retention-days: 30
+          retention-days: 7
 
   # ========== ステータス通知 ==========
   status:
