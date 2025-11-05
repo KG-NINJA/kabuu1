@@ -81,14 +81,13 @@ jobs:
         continue-on-error: true
 
       - name: Upload test results
-        if: always()
+        if: always() && failure()
         uses: actions/upload-artifact@v4
         with:
           name: test-results
           path: |
-            .pytest_cache/
             .coverage
-          retention-days: 7
+          retention-days: 1
         continue-on-error: true
 
   # ========== 強化学習パイプライン実行 ==========
@@ -139,7 +138,7 @@ jobs:
 
       - name: Upload pipeline results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v3
         with:
           name: ml-pipeline-results
           path: |
@@ -220,7 +219,7 @@ jobs:
           cat DEPLOYMENT_REPORT.md
 
       - name: Upload deployment report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v3
         with:
           name: deployment-report
           path: DEPLOYMENT_REPORT.md
