@@ -1,0 +1,136 @@
+version: '3.8'
+
+services:
+  # ========== 予測パイプライン ==========
+  prediction-pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kabuu1-pipeline
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./config:/app/config:ro
+    ports:
+      - "8000:8000"
+    networks:
+      - kabuu1-network
+    depends_on:
+      - redis
+    healthcheck:
+      test: ["CMD", "python", "-c", "print('OK')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    labels:
+      - "com.example.description=ML Prediction Pipeline"
+
+  # ========== Redis (キャッシュ & メッセージキュー) ==========
+  redis:
+    image: redis:7-alpine
+    container_name: kabuu1-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - kabuu1-network
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ========== モニタリングダッシュボード ==========
+  monitor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kabuu1-monitor
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1
+      - FLASK_APP=src.monitor
+      - FLASK_ENV=production
+      - MONITOR_PORT=5000
+      - MONITOR_HOST=0.0.0.0
+    volumes:
+      - ./data:/app/data:ro
+      - ./logs:/app/logs:ro
+    ports:
+      - "5000:5000"
+    networks:
+      - kabuu1-network
+    depends_on:
+      - prediction-pipeline
+    command: python -m flask run --host=0.0.0.0 --port=5000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ========== Prometheus (メトリクス収集) ==========
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: kabuu1-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - kabuu1-network
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ========== Grafana (可視化) ==========
+  grafana:
+    image: grafana/grafana:latest
+    container_name: kabuu1-grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+    volumes:
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - kabuu1-network
+    depends_on:
+      - prometheus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+# ========== ネットワーク定義 ==========
+networks:
+  kabuu1-network:
+    driver: bridge
+
+# ========== ボリューム定義 ==========
+volumes:
+  redis-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
