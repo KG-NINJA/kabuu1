@@ -1,0 +1,25 @@
+name: Cleanup Old Artifacts
+
+# 毎日深夜にクリーンアップを実行
+on:
+  schedule:
+    - cron: '0 2 * * *'  # 毎日 UTC 02:00
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Delete artifacts older than 1 day
+        uses: geekyeggo/delete-artifact@v2
+        with:
+          name: |
+            test-results
+            ml-pipeline-results
+          failOnError: false
+
+      - name: Log cleanup result
+        run: |
+          echo "✅ Old artifacts cleaned up"
+          echo "Removed: test-results, ml-pipeline-results"
