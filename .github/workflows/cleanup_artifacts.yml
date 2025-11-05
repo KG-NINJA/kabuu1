@@ -12,7 +12,7 @@ jobs:
     
     steps:
       - name: Delete artifacts older than 1 day
-        uses: geekyeggo/delete-artifact@v2
+        uses: geekyeggo/delete-artifact@v3
         with:
           name: |
             test-results
