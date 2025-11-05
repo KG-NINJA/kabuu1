@@ -1,0 +1,22 @@
+model:
+  learning_rate: 0.001
+  hidden_units: 128
+  batch_size: 32
+  epochs: 10
+  lookback_days: 365
+
+rl:
+  validation_dir: "validation_results"
+  prediction_dir: "prediction_results"
+  reward_threshold: 0.7
+
+schedule:
+  prediction_time: "09:00"
+  model_review_day: "sunday"
+  model_review_time: "22:00"
+
+logging:
+  level: "INFO"
+  file: "logs/prediction_pipeline.log"
+  max_bytes: 5242880  # 5MB
+  backup_count: 5
