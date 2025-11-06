@@ -1,14 +1,16 @@
+
 name: Stock Prediction Pipeline
 
 on:
   push:
     branches:
       - main
-  pull_request:
 
+  pull_request:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -162,3 +164,4 @@ jobs:
     steps:
       - name: Pipeline summary
         run: echo "Stock prediction pipeline completed successfully."
+
