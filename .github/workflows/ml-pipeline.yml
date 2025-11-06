@@ -1,4 +1,4 @@
-name: Kabuu1 ML Pipeline CI/CD
+name: Stock Price Prediction Pipeline
 
 on:
   push:
@@ -9,13 +9,16 @@ on:
     branches:
       - main
   schedule:
-    # 毎日UTC 09:00に予測実行
-    - cron: '0 9 * * *'
-    # 毎週日曜UTC 22:00にモデルレビュー
-    - cron: '0 22 * * 0'
-  workflow_dispatch:  # ← これを追加
+    # 毎日UTC 09:00に予測実行（営業時間前）
+    - cron: '0 9 * * 1-5'
+    # 毎週月曜UTC 08:00にモデル再学習
+    - cron: '0 8 * * 1'
+  workflow_dispatch:
+
 env:
   PYTHON_VERSION: '3.11'
+  DATA_DIR: 'data/stock_data'
+  MODEL_DIR: 'models'
 
 jobs:
   # ========== ビルド & テスト ==========
@@ -27,86 +30,36 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Display repository structure
-        run: |
-          echo "=== Repository Structure ==="
-          find . -type f -name "*.py" | grep -E "(src/|tests/)" | sort || echo "Python files not found"
-          echo ""
-          echo "=== Root files ==="
-          ls -la *.txt *.md 2>/dev/null || echo "No root config files"
-
       - name: Set up Python ${{ env.PYTHON_VERSION }}
         uses: actions/setup-python@v4
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential libssl-dev
-
-      - name: Upgrade pip and tools
-        run: |
-          python -m pip install --upgrade pip setuptools wheel
-
       - name: Install dependencies
         run: |
-          if [ -f "requirements.txt" ]; then
-            pip install -r requirements.txt 2>&1 | tail -20
-          else
-            echo "requirements.txt not found, installing minimal packages"
-            pip install pytest pytest-cov flake8 black mypy
-          fi
-        continue-on-error: true
-
-      - name: Validate Python syntax
-        run: |
-          echo "Validating Python files..."
-          if [ -d "src" ]; then
-            python -m py_compile src/*.py 2>&1 | head -20
-            echo "✅ Source files validated"
-          fi
-          
-          if [ -d "tests" ]; then
-            python -m py_compile tests/*.py 2>&1 | head -20
-            echo "✅ Test files validated"
-          fi
-        continue-on-error: true
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -r requirements.txt
 
       - name: Run unit tests
         run: |
-          if [ -d "tests" ]; then
-            echo "Running tests..."
-            pytest tests/ -v --tb=short --color=yes -x 2>&1 | tail -50
-          else
-            echo "No tests directory found"
-          fi
-        continue-on-error: true
-
+          pytest tests/ -v --tb=short --cov=src --cov-report=xml
+          
       - name: Run code quality checks
         run: |
-          if [ -d "src" ]; then
-            echo "=== Running flake8 ==="
-            flake8 src/ --count --max-line-length=100 --statistics 2>&1 | tail -20 || true
-            
-            echo "=== Running black ==="
-            black --check src/ 2>&1 | tail -10 || true
-            
-            echo "=== Running mypy ==="
-            mypy src/ --ignore-missing-imports 2>&1 | tail -20 || true
-          fi
-        continue-on-error: true
+          flake8 src/ --max-line-length=100
+          black --check src/
+          mypy src/ --ignore-missing-imports
 
-      - name: Summary
-        run: |
-          echo "✅ Build job completed"
-          echo "Next: ML Pipeline and Docker Build"
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./coverage.xml
 
-  # ========== 強化学習パイプライン実行 ==========
-  ml-pipeline:
+  # ========== データ取得・前処理 ==========
+  fetch-data:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 20
     needs: build
     if: github.event_name == 'schedule' || github.ref == 'refs/heads/main'
 
@@ -122,46 +75,240 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          if [ -f "requirements.txt" ]; then
-            pip install -r requirements.txt 2>&1 | tail -10
-          fi
-        continue-on-error: true
+          pip install -r requirements.txt
 
       - name: Create data directories
         run: |
-          mkdir -p data/rl_results
-          mkdir -p data/validation_results
-          mkdir -p data/prediction_results
+          mkdir -p ${{ env.DATA_DIR }}
+          mkdir -p ${{ env.MODEL_DIR }}
           mkdir -p logs
-          echo "✅ Directories created"
 
-      - name: Run ML pipeline
+      - name: Fetch stock data
         run: |
-          echo "=== Running ML Pipeline ==="
-          if [ -d "tests" ]; then
-            timeout 300 pytest tests/ -v --tb=short 2>&1 | tail -100
-          else
-            echo "No tests found, running sample pipeline"
-            python -c "print('✅ ML Pipeline ready')"
-          fi
-        continue-on-error: true
-        timeout-minutes: 10
+          python src/data_fetcher.py \
+            --us-symbols AAPL GOOGL MSFT TSLA \
+            --jp-symbols 9984 6758 7203 8306 \
+            --output ${{ env.DATA_DIR }}/raw_data.csv \
+            --log logs/fetch.log
+          echo "✅ Stock data fetched (US + JP)"
 
-      - name: Check results
+      - name: Data validation
         run: |
-          echo "=== Checking Results ==="
-          echo "Data files:"
-          find data/ -type f 2>/dev/null | wc -l
-          echo "Log files:"
-          find logs/ -type f 2>/dev/null | wc -l
-          echo "✅ Results collected"
+          python src/data_validator.py \
+            --input ${{ env.DATA_DIR }}/raw_data.csv \
+            --output logs/validation_report.txt
+          cat logs/validation_report.txt
+
+      - name: Upload raw data
+        uses: actions/upload-artifact@v4
+        with:
+          name: raw-stock-data
+          path: ${{ env.DATA_DIR }}/raw_data.csv
+          retention-days: 30
+
+  # ========== 特徴量エンジニアリング & 前処理 ==========
+  preprocess:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: fetch-data
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Download raw data
+        uses: actions/download-artifact@v4
+        with:
+          name: raw-stock-data
+          path: ${{ env.DATA_DIR }}
+
+      - name: Create directories
+        run: |
+          mkdir -p ${{ env.DATA_DIR }}/processed
+          mkdir -p logs
+
+      - name: Feature engineering
+        run: |
+          python src/feature_engineering.py \
+            --input ${{ env.DATA_DIR }}/raw_data.csv \
+            --output ${{ env.DATA_DIR }}/processed/features.csv \
+            --log logs/features.log
+          echo "✅ Features created"
+
+      - name: Data preprocessing
+        run: |
+          python src/preprocessor.py \
+            --input ${{ env.DATA_DIR }}/processed/features.csv \
+            --output ${{ env.DATA_DIR }}/processed/train_data.csv \
+            --test-output ${{ env.DATA_DIR }}/processed/test_data.csv \
+            --log logs/preprocessing.log
+
+      - name: Data statistics
+        run: |
+          python -c "
+          import pandas as pd
+          train = pd.read_csv('${{ env.DATA_DIR }}/processed/train_data.csv')
+          test = pd.read_csv('${{ env.DATA_DIR }}/processed/test_data.csv')
+          print(f'Train set shape: {train.shape}')
+          print(f'Test set shape: {test.shape}')
+          print(f'Features: {list(train.columns)}')
+          "
+
+      - name: Upload processed data
+        uses: actions/upload-artifact@v4
+        with:
+          name: processed-stock-data
+          path: ${{ env.DATA_DIR }}/processed/
+          retention-days: 30
+
+  # ========== モデル学習 ==========
+  train-model:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: preprocess
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Create directories
+        run: |
+          mkdir -p ${{ env.MODEL_DIR }}
+          mkdir -p logs
+
+      - name: Download processed data
+        uses: actions/download-artifact@v4
+        with:
+          name: processed-stock-data
+          path: ${{ env.DATA_DIR }}/processed/
+
+      - name: Train LSTM model
+        run: |
+          python src/train_lstm.py \
+            --train-data ${{ env.DATA_DIR }}/processed/train_data.csv \
+            --test-data ${{ env.DATA_DIR }}/processed/test_data.csv \
+            --model-output ${{ env.MODEL_DIR }}/lstm_model.h5 \
+            --scaler-output ${{ env.MODEL_DIR }}/scaler.pkl \
+            --log logs/train_lstm.log \
+            --epochs 50 \
+            --batch-size 32
+
+      - name: Train XGBoost model
+        run: |
+          python src/train_xgboost.py \
+            --train-data ${{ env.DATA_DIR }}/processed/train_data.csv \
+            --test-data ${{ env.DATA_DIR }}/processed/test_data.csv \
+            --model-output ${{ env.MODEL_DIR }}/xgboost_model.pkl \
+            --log logs/train_xgboost.log
+
+      - name: Model evaluation
+        run: |
+          python src/evaluate_models.py \
+            --lstm-model ${{ env.MODEL_DIR }}/lstm_model.h5 \
+            --xgb-model ${{ env.MODEL_DIR }}/xgboost_model.pkl \
+            --test-data ${{ env.DATA_DIR }}/processed/test_data.csv \
+            --output logs/model_comparison.txt
+          cat logs/model_comparison.txt
+
+      - name: Upload models
+        uses: actions/upload-artifact@v4
+        with:
+          name: trained-models
+          path: ${{ env.MODEL_DIR }}/
+          retention-days: 60
+
+      - name: Upload training logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: training-logs
+          path: logs/
+          retention-days: 30
+
+  # ========== 予測実行 ==========
+  predict:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: train-model
+    if: github.event_name == 'schedule' || github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Create directories
+        run: |
+          mkdir -p ${{ env.DATA_DIR }}/predictions
+          mkdir -p logs
+
+      - name: Download models
+        uses: actions/download-artifact@v4
+        with:
+          name: trained-models
+          path: ${{ env.MODEL_DIR }}/
+
+      - name: Generate predictions
+        run: |
+          python src/predict.py \
+            --lstm-model ${{ env.MODEL_DIR }}/lstm_model.h5 \
+            --xgb-model ${{ env.MODEL_DIR }}/xgboost_model.pkl \
+            --scaler ${{ env.MODEL_DIR }}/scaler.pkl \
+            --us-symbols AAPL GOOGL MSFT TSLA \
+            --jp-symbols 9984 6758 7203 8306 \
+            --days-ahead 5 \
+            --output ${{ env.DATA_DIR }}/predictions/forecast.csv \
+            --log logs/predict.log
+
+      - name: Display predictions
+        run: |
+          echo "=== Stock Price Forecasts ==="
+          python -c "
+          import pandas as pd
+          df = pd.read_csv('${{ env.DATA_DIR }}/predictions/forecast.csv')
+          print(df.to_string())
+          "
+
+      - name: Upload predictions
+        uses: actions/upload-artifact@v4
+        with:
+          name: stock-predictions-${{ github.run_number }}
+          path: ${{ env.DATA_DIR }}/predictions/
+          retention-days: 7
 
   # ========== Docker ビルド ==========
   docker-build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    needs: build
+    needs: [build, train-model]
     if: github.ref == 'refs/heads/main'
 
     steps:
@@ -176,20 +323,15 @@ jobs:
         with:
           context: .
           push: false
-          tags: kabuu1:latest
+          tags: stock-predictor:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
-        continue-on-error: true
-
-      - name: Summary
-        run: |
-          echo "✅ Docker build completed"
 
   # ========== デプロイ準備 ==========
   deploy-check:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: [build, ml-pipeline]
+    needs: [build, train-model, predict]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
     steps:
@@ -199,54 +341,63 @@ jobs:
       - name: Generate deployment report
         run: |
           cat > DEPLOYMENT_REPORT.md << 'EOF'
-          # Kabuu1 デプロイレポート
+          # Stock Price Prediction Pipeline - デプロイレポート
           
-          - **実行日時**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
-          - **ブランチ**: ${{ github.ref_name }}
-          - **コミット**: ${{ github.sha }}
+          **実行日時**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+          **ブランチ**: ${{ github.ref_name }}
+          **コミット**: ${{ github.sha }}
           
-          ## チェック項目
+          ## 実行結果
           - ✅ ビルド: ${{ needs.build.result }}
-          - ✅ ML パイプライン: ${{ needs.ml-pipeline.result }}
+          - ✅ モデル学習: ${{ needs.train-model.result }}
+          - ✅ 予測生成: ${{ needs.predict.result }}
           
-          ## ディレクトリ構造
-          - `src/` - メインコード
-          - `tests/` - テストコード
-          - `config/` - 設定ファイル
-          - `data/` - データ出力
-          - `.github/workflows/` - ワークフロー
+          ## 処理内容
+          1. **データ取得**: Yahoo Finance から US株（AAPL, GOOGL, MSFT, TSLA）と JP株（9984ソフトバンク, 6758ソニー, 7203トヨタ, 8306三菱UFJ）の株価取得
+          2. **特徴量エンジニアリング**: 技術指標（移動平均、RSI、MACD等）生成
+          3. **前処理**: 正規化、スケーリング、訓練/テスト分割
+          4. **モデル学習**: LSTM と XGBoost の 2 モデルを学習
+          5. **評価**: 両モデルを比較、最適なモデルを選択
+          6. **予測**: 5営業日先の株価予測を生成（US + JP株）
+          
+          ## 出力ファイル
+          - 予測結果: `predictions/forecast.csv`
+          - 学習済みモデル: `models/`
+          - ログ: `logs/`
           
           EOF
           cat DEPLOYMENT_REPORT.md
 
-      - name: Upload deployment report
+      - name: Upload report
         uses: actions/upload-artifact@v4
         with:
           name: deployment-report-${{ github.run_number }}
           path: DEPLOYMENT_REPORT.md
           retention-days: 7
-        continue-on-error: true
 
   # ========== ステータス通知 ==========
   status:
     runs-on: ubuntu-latest
-    needs: [build, ml-pipeline, docker-build]
+    needs: [build, fetch-data, preprocess, train-model, predict, docker-build]
     if: always()
 
     steps:
       - name: Pipeline status
         run: |
-          echo "# CI/CD Pipeline Status"
+          echo "# Stock Price Prediction Pipeline - 実行結果"
           echo ""
-          echo "| Job | Status |"
-          echo "|-----|--------|"
+          echo "| ジョブ | ステータス |"
+          echo "|--------|-----------|"
           echo "| Build | ${{ needs.build.result }} |"
-          echo "| ML Pipeline | ${{ needs.ml-pipeline.result }} |"
+          echo "| Data Fetch | ${{ needs.fetch-data.result }} |"
+          echo "| Preprocess | ${{ needs.preprocess.result }} |"
+          echo "| Train Model | ${{ needs.train-model.result }} |"
+          echo "| Predict | ${{ needs.predict.result }} |"
           echo "| Docker Build | ${{ needs.docker-build.result }} |"
           echo ""
           
-          if [ "${{ needs.build.result }}" = "success" ]; then
-            echo "✅ All critical jobs passed"
+          if [ "${{ needs.build.result }}" = "success" ] && [ "${{ needs.predict.result }}" = "success" ]; then
+            echo "✅ パイプライン成功 - 予測が生成されました"
           else
-            echo "⚠️ Some jobs did not pass"
+            echo "⚠️ パイプライン失敗 - ログを確認してください"
           fi
