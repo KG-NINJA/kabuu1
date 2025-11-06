@@ -1,4 +1,6 @@
 name: Stock Price Prediction Pipeline
+run: |
+    flake8 src/ --max-line-length=100 --exclude=reinforcement_learning.py --count --statistics || true
 
 on:
   push:
