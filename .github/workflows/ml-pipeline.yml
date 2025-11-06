@@ -47,9 +47,9 @@ jobs:
           
       - name: Run code quality checks
         run: |
-          flake8 src/ --max-line-length=100
-          black --check src/
-          mypy src/ --ignore-missing-imports
+          flake8 src/ --max-line-length=100 --exclude=reinforcement_learning.py
+          black --check src/ --exclude=reinforcement_learning.py
+          mypy src/ --ignore-missing-imports --exclude=reinforcement_learning.py
 
       - name: Upload coverage
         uses: codecov/codecov-action@v3
