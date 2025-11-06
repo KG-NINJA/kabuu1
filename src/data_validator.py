@@ -15,7 +15,6 @@ from feature_engineering import FeatureEngineer
 __all__ = ["DataValidator", "validate_data"]
 
 
-
 @dataclass
 class DataValidator:
     """欠損値や外れ値をチェックするユーティリティ。"""
@@ -76,7 +75,6 @@ def validate_data() -> Dict[str, Dict[str, int]]:
     """DataValidator を実行して結果を返す。"""
     validator = DataValidator()
     return validator.validate()
-
 
 
 
