@@ -14,13 +14,10 @@ from feature_engineering import FeatureEngineer
 
 __all__ = ["DataValidator", "validate_data"]
 
-
 @dataclass
 class DataValidator:
     """欠損値や外れ値をチェックするユーティリティ。"""
-
     data_path: Path = Path("data/processed/features.csv")
-
     report_path: Path = Path("logs/validation_report.txt")
 
 
@@ -71,11 +68,11 @@ class DataValidator:
         return {"missing": missing, "outliers": outliers}
 
 
+
 def validate_data() -> Dict[str, Dict[str, int]]:
     """DataValidator を実行して結果を返す。"""
     validator = DataValidator()
     return validator.validate()
-
 
 
 def _format_summary(result: Dict[str, Dict[str, int]]) -> str:
@@ -95,5 +92,4 @@ if __name__ == "__main__":
     RESULT = validator.validate()
     print(_format_summary(RESULT))
     print(f"Report generated at: {SUMMARY_PATH}")
-
 
