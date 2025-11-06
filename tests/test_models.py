@@ -36,9 +36,10 @@ class TestModelFrameworks:
             from tensorflow.keras.layers import LSTM, Dense, Input
             
             # Inputレイヤーを使用して正しい入力形状を指定
+            # 複数のLSTMレイヤーを使う場合は、最後のLSTMを除いて return_sequences=True にする
             model = Sequential([
                 Input(shape=(10, 5)),  # (時系列ステップ, 特徴数)
-                LSTM(32, activation='relu'),
+                LSTM(32, activation='relu', return_sequences=True),
                 LSTM(16, activation='relu'),
                 Dense(1)
             ])
