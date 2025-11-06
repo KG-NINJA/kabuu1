@@ -13,7 +13,7 @@ on:
     - cron: '0 9 * * *'
     # 毎週日曜UTC 22:00にモデルレビュー
     - cron: '0 22 * * 0'
-
+workflow_dispatch:  # ← これを追加
 env:
   PYTHON_VERSION: '3.11'
 
