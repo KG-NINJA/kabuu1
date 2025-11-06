@@ -24,10 +24,12 @@ DEFAULT_TICKERS = [
     "GOOGL",
     "MSFT",
     "TSLA",
-    "9984.T",
-    "6758.T",
-    "7203.T",
-    "8306.T",
+
+    "9984",
+    "6758",
+    "7203",
+    "8306",
+
 ]
 
 
@@ -46,7 +48,7 @@ class DataFetcher:
 
     tickers: Iterable[str] = field(default_factory=lambda: list(DEFAULT_TICKERS))
     data_dir: Path = Path("data/raw")
-    period: str = "1y"
+
     interval: str = "1d"
 
     def __post_init__(self) -> None:
@@ -69,14 +71,27 @@ class DataFetcher:
             LOGGER.info("株価データを %s に保存しました", combined_path)
         return results
 
+
+    def _resolve_symbol(self, ticker: str) -> str:
+        """yfinance へ渡すシンボルを算出する。"""
+        if ticker.isdigit():
+            return f"{ticker}.T"
+        return ticker
+
+
     def _download_ticker(self, ticker: str) -> pd.DataFrame:
         """単一銘柄のデータを取得する。失敗時はダミーデータを生成する。"""
         dataframe: Optional[pd.DataFrame] = None
         if yf is not None:
             try:
+
+                end_date = datetime.utcnow()
+                start_date = end_date - timedelta(days=365)
                 dataframe = yf.download(
-                    ticker,
-                    period=self.period,
+                    self._resolve_symbol(ticker),
+                    start=start_date.strftime("%Y-%m-%d"),
+                    end=end_date.strftime("%Y-%m-%d"),
+=
                     interval=self.interval,
                     progress=False,
                 )

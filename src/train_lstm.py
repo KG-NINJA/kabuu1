@@ -79,10 +79,15 @@ class LSTMTrainer:
                 LSTM(
                     64,
                     activation="tanh",
+
+                    return_sequences=True,
                     input_shape=(self.lookback, len(feature_names)),
                 ),
+                LSTM(32, activation="tanh", return_sequences=True),
+                LSTM(16, activation="tanh"),
                 Dropout(0.2),
-                Dense(32, activation="relu"),
+                Dense(16, activation="relu"),
+
                 Dense(1),
             ]
         )

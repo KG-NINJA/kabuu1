@@ -1,4 +1,7 @@
 """データ品質を検証しレポートを生成する。"""
+
+
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -17,11 +20,13 @@ __all__ = ["DataValidator", "validate_data"]
 class DataValidator:
     """欠損値や外れ値をチェックするユーティリティ。"""
 
+
     data_path: Path = Path("data/processed/features.csv")
     report_path: Path = Path("logs/validation_report.txt")
 
     def __post_init__(self) -> None:
-        """レポート出力ディレクトリを作成する。"""
+
+
         self.report_path.parent.mkdir(parents=True, exist_ok=True)
 
     def load_data(self) -> pd.DataFrame:
@@ -40,7 +45,9 @@ class DataValidator:
     def check_outliers(
         self, dataframe: pd.DataFrame, threshold: float = 3.0
     ) -> Dict[str, int]:
-        """単純なZスコアを利用して外れ値を検出する。"""
+
+        """単純な Z スコアを利用して外れ値を検出する。"""
+
         numeric = dataframe.select_dtypes(include=[np.number])
         if numeric.empty:
             return {}
@@ -64,14 +71,16 @@ class DataValidator:
         report_lines.append("Outlier Counts:")
         for column, count in outliers.items():
             report_lines.append(f"  {column}: {count}")
-        self.report_path.write_text(
-            "\n".join(report_lines), encoding="utf-8"
-        )
+
+        self.report_path.write_text("\n".join(report_lines), encoding="utf-8")
+
         return {"missing": missing, "outliers": outliers}
 
 
 def validate_data() -> Dict[str, Dict[str, int]]:
-    """DataValidatorを実行して結果を返す。"""
+
+    """DataValidator を実行して結果を返す。"""
+
     validator = DataValidator()
     return validator.validate()
 
@@ -84,6 +93,7 @@ def _format_summary(result: Dict[str, Dict[str, int]]) -> str:
         for key, value in values.items():
             lines.append(f"  {key}: {value}")
     return "\n".join(lines)
+
 
 
 if __name__ == "__main__":
