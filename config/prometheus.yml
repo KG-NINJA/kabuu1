@@ -1,49 +1,18 @@
-# Prometheus 設定ファイル
+# 1. ローカルで最終テスト
+pytest tests/ -v
 
-# グローバル設定
-global:
-  scrape_interval: 15s       # メトリクス収集間隔
-  evaluation_interval: 15s   # ルール評価間隔
-  external_labels:
-    monitor: 'kabuu1-monitor'
-    environment: 'production'
+# 2. GitHub に push
+git add .
+git commit -m "Kabuu1: Complete ML Pipeline setup"
+git push origin main
 
-# アラート設定（オプション）
-alerting:
-  alertmanagers:
-    - static_configs:
-        - targets:
-            - localhost:9093
+# 3. Actions で自動実行確認
+# GitHub → Actions タブ
+```
 
-# ルールファイル（オプション）
-rule_files:
-  # - 'alert_rules.yml'
-  # - 'recording_rules.yml'
-
-# スクレイプ設定
-scrape_configs:
-  # ========== Prometheus 自身 ==========
-  - job_name: 'prometheus'
-    static_configs:
-      - targets: ['localhost:9090']
-
-  # ========== 予測パイプライン ==========
-  - job_name: 'prediction-pipeline'
-    static_configs:
-      - targets: ['prediction-pipeline:8000']
-    metrics_path: '/metrics'
-    scrape_interval: 30s
-    scrape_timeout: 10s
-
-  # ========== Redis ==========
-  - job_name: 'redis'
-    static_configs:
-      - targets: ['redis:6379']
-
-  # ========== ノード（システムメトリクス） ==========
-  - job_name: 'node-exporter'
-    static_configs:
-      - targets: ['localhost:9100']
-    relabel_configs:
-      - source_labels: [__address__]
-        target_label: instance
+## 📊 自動実行スケジュール
+```
+毎営業日 06:00 UTC (JST 15:00)  → 日本株 ML 実行
+毎営業日 20:00 UTC (EDT 16:00)  → USA株 ML 実行
+毎営業日 21:00 UTC (EST 16:00)  → USA株 ML 実行
+毎週日曜 22:00 UTC              → モデル レビュー
