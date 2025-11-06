@@ -45,9 +45,8 @@ class TestModelFrameworks:
             ])
             
             assert model is not None
-            assert len(model.layers) == 4
-            # Inputレイヤーは自動的に追加される
-            assert model.layers[1].units == 32
+            assert len(model.layers) == 3  # Input, LSTM, LSTM, Dense から Input は数えられない
+            assert model.layers[0].units == 32
         except ImportError:
             pytest.skip("TensorFlow not installed")
 
