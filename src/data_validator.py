@@ -11,14 +11,18 @@ import pandas as pd
 
 from feature_engineering import FeatureEngineer
 
+
 __all__ = ["DataValidator", "validate_data"]
+
 
 @dataclass
 class DataValidator:
     """欠損値や外れ値をチェックするユーティリティ。"""
 
     data_path: Path = Path("data/processed/features.csv")
+
     report_path: Path = Path("logs/validation_report.txt")
+
 
     def __post_init__(self) -> None:
         self.report_path.parent.mkdir(parents=True, exist_ok=True)
@@ -73,8 +77,10 @@ def validate_data() -> Dict[str, Dict[str, int]]:
     return validator.validate()
 
 
+
 def _format_summary(result: Dict[str, Dict[str, int]]) -> str:
     """検証結果を読みやすく整形する。"""
+
     lines = ["Validation Summary"]
     for section, values in result.items():
         lines.append(f"[{section}]")
@@ -89,3 +95,5 @@ if __name__ == "__main__":
     RESULT = validator.validate()
     print(_format_summary(RESULT))
     print(f"Report generated at: {SUMMARY_PATH}")
+
+
