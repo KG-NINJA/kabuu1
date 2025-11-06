@@ -14,6 +14,8 @@ from feature_engineering import FeatureEngineer
 
 __all__ = ["DataValidator", "validate_data"]
 
+
+
 @dataclass
 class DataValidator:
     """欠損値や外れ値をチェックするユーティリティ。"""
