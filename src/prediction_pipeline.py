@@ -11,10 +11,10 @@ import time
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import schedule
-import yaml
+import yaml  # type: ignore[import-untyped]
 
 # プロジェクトルートをパスに追加（強化学習モジュールを参照するため）
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -29,7 +29,7 @@ def setup_logging(config: dict) -> None:
     log_config = config.get("logging", {})
     log_file = log_config.get("file", "prediction_pipeline.log")
 
-    handlers = [
+    handlers: List[logging.Handler] = [
         RotatingFileHandler(
             log_file,
             maxBytes=log_config.get("max_bytes", 5 * 1024 * 1024),
@@ -53,8 +53,9 @@ def setup_logging(config: dict) -> None:
 class Config:
     """YAMLベースの設定管理クラス"""
 
-    def __init__(self, config_path: str = None) -> None:
+    def __init__(self, config_path: Optional[str] = None) -> None:
         # デフォルトの設定ファイルパスをスクリプト配置ディレクトリ基準に設定
+        self.config_path: Path
         if config_path is None:
             # スクリプトの配置ディレクトリを基準に config.yaml を探す
             self.config_path = Path(__file__).resolve().parent / "config.yaml"
@@ -70,10 +71,14 @@ class Config:
                 self._config = yaml.safe_load(handle) or {}
             logging.info(f"設定ファイルを読み込みました: {self.config_path}")
         except FileNotFoundError:
-            logging.warning(f"設定ファイルが見つかりませんでした: {self.config_path}。デフォルト値を使用します。")
+            logging.warning(
+                f"設定ファイルが見つかりませんでした: {self.config_path}。デフォルト値を使用します。"
+            )
             self._config = {}
         except Exception as exc:
-            logging.error(f"設定ファイル読み込み中にエラー: {exc}。デフォルト値を使用します。")
+            logging.error(
+                f"設定ファイル読み込み中にエラー: {exc}。デフォルト値を使用します。"
+            )
             self._config = {}
 
     def get(self, key: str, default: Any = None) -> Any:
@@ -130,7 +135,9 @@ class PredictionPipeline:
         self.model = PredictionModel(config)
 
         # 強化学習パイプライン（既存モジュール）を初期化
-        from reinforcement_learning import ReinforcementLearningPipeline  # 遅延インポートで循環回避
+        from reinforcement_learning import (
+            ReinforcementLearningPipeline,
+        )  # 遅延インポートで循環回避
 
         self.rl_pipeline = ReinforcementLearningPipeline(
             validation_dir=config.get("rl.validation_dir", "validation_results"),
@@ -138,15 +145,21 @@ class PredictionPipeline:
         )
 
         # 出力ディレクトリを作成
-        self.validation_dir = Path(config.get("rl.validation_dir", "validation_results"))
-        self.prediction_dir = Path(config.get("rl.prediction_dir", "prediction_results"))
+        self.validation_dir = Path(
+            config.get("rl.validation_dir", "validation_results")
+        )
+        self.prediction_dir = Path(
+            config.get("rl.prediction_dir", "prediction_results")
+        )
         self.metrics_path = Path("performance_metrics.json")
         self.pending_path = self.prediction_dir / "pending_predictions.json"
 
         for directory in [self.validation_dir, self.prediction_dir]:
             directory.mkdir(parents=True, exist_ok=True)
 
-        self.pending_predictions: List[Dict[str, Any]] = self._load_pending_predictions()
+        self.pending_predictions: List[Dict[str, Any]] = (
+            self._load_pending_predictions()
+        )
 
         self.setup_scheduler()
         logging.info("予測パイプラインを初期化しました")
@@ -242,7 +255,9 @@ class PredictionPipeline:
                     )
 
                     record["reward"] = reward
-                    record["prediction_error"] = (predicted_price - actual_price) / actual_price
+                    record["prediction_error"] = (
+                        predicted_price - actual_price
+                    ) / actual_price
                     self._append_metrics(record)
                     logging.info(
                         f"{ticker} の実際値 {actual_price:.2f} を反映（報酬: {reward:.3f}）"
@@ -253,7 +268,9 @@ class PredictionPipeline:
 
             # 完了済みレコードは保持しない（履歴は metrics に保存済み）
             self.pending_predictions = [
-                rec for rec in self.pending_predictions if rec.get("status") != "completed"
+                rec
+                for rec in self.pending_predictions
+                if rec.get("status") != "completed"
             ]
             self._persist_pending_predictions()
 
@@ -289,9 +306,13 @@ class PredictionPipeline:
         prediction_time = self.config.get("schedule.prediction_time", "09:00")
         schedule.every().day.at(prediction_time).do(self.predict_all_tickers)
 
-        model_review_day = self.config.get("schedule.model_review_day", "sunday").lower()
+        model_review_day = self.config.get(
+            "schedule.model_review_day", "sunday"
+        ).lower()
         review_time = self.config.get("schedule.model_review_time", "22:00")
-        getattr(schedule.every(), model_review_day).at(review_time).do(self.weekly_model_review)
+        getattr(schedule.every(), model_review_day).at(review_time).do(
+            self.weekly_model_review
+        )
 
         logging.info("スケジューラーを設定しました")
 
