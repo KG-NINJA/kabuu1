@@ -48,6 +48,8 @@ class DataValidator:
         outlier_counts = (np.abs(z_scores) > threshold).sum().to_dict()
         return outlier_counts
 
+
+
     def validate(self) -> Dict[str, Dict[str, int]]:
         """検証を実施しレポートを生成する。"""
         dataframe = self.load_data()
