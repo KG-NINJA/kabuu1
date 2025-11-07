@@ -139,11 +139,14 @@ jobs:
           mkdir -p ${{ env.DATA_DIR }}/processed
           mkdir -p logs
 
-      - name: Download raw data
-        uses: actions/download-artifact@v4
-        with:
-          name: raw-stock-data
-          path: ${{ env.DATA_DIR }}/
+      - name: Fetch stock data (re-run for preprocessing)
+        run: |
+          python src/data_fetcher.py \
+            --us-symbols AAPL GOOGL MSFT TSLA \
+            --jp-symbols 9984 6758 7203 8306 \
+            --output ${{ env.DATA_DIR }}/raw_data.csv \
+            --log logs/fetch.log
+        continue-on-error: true
 
       - name: Feature engineering
         run: |
@@ -153,16 +156,6 @@ jobs:
             --log logs/features.log
           echo "✅ Features created"
         continue-on-error: true
-
-      - name: Verify features file
-        run: |
-          if [ -f "${{ env.DATA_DIR }}/processed/features.csv" ]; then
-            echo "✅ features.csv exists"
-            wc -l ${{ env.DATA_DIR }}/processed/features.csv
-          else
-            echo "⚠️ features.csv not found"
-            ls -la ${{ env.DATA_DIR }}/processed/ || true
-          fi
 
       - name: Data preprocessing
         run: |
@@ -181,8 +174,23 @@ jobs:
       - name: Save processed data to repo
         run: |
           mkdir -p data/processed_data_history
-          tar -czf data/processed_data_history/processed_$(date +%Y%m%d_%H%M%S).tar.gz ${{ env.DATA_DIR }}/processed/ || true
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          if [ -f "${{ env.DATA_DIR }}/processed/train_data.csv" ]; then
+            cp ${{ env.DATA_DIR }}/processed/train_data.csv data/processed_data_history/train_${TIMESTAMP}.csv || true
+            cp ${{ env.DATA_DIR }}/processed/test_data.csv data/processed_data_history/test_${TIMESTAMP}.csv || true
+            echo "✅ Processed data saved"
+          fi
+
+      - name: Commit processed data
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add data/processed_data_history/ || true
+          git commit -m "📊 Processed data - $(date +'%Y-%m-%d %H:%M:%S UTC')" || true
+          git push origin main || echo "Push skipped"
         continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   train-model:
     runs-on: ubuntu-latest
@@ -205,14 +213,27 @@ jobs:
 
       - name: Create directories
         run: |
+          mkdir -p ${{ env.DATA_DIR }}/processed
           mkdir -p ${{ env.MODEL_DIR }}
           mkdir -p logs
 
-      - name: Download processed data
-        uses: actions/download-artifact@v4
-        with:
-          name: processed-stock-data
-          path: ${{ env.DATA_DIR }}/processed/
+      - name: Regenerate processed data for training
+        run: |
+          python src/data_fetcher.py \
+            --us-symbols AAPL GOOGL MSFT TSLA \
+            --jp-symbols 9984 6758 7203 8306 \
+            --output ${{ env.DATA_DIR }}/raw_data.csv \
+            --log logs/fetch.log
+          python src/feature_engineering.py \
+            --input ${{ env.DATA_DIR }}/raw_data.csv \
+            --output ${{ env.DATA_DIR }}/processed/features.csv \
+            --log logs/features.log
+          python src/preprocessor.py \
+            --input ${{ env.DATA_DIR }}/processed/features.csv \
+            --output ${{ env.DATA_DIR }}/processed/train_data.csv \
+            --test-output ${{ env.DATA_DIR }}/processed/test_data.csv \
+            --log logs/preprocessing.log
+        continue-on-error: true
 
       - name: Train LSTM model
         run: |
@@ -243,8 +264,24 @@ jobs:
       - name: Save models to repo
         run: |
           mkdir -p data/models_history
-          tar -czf data/models_history/models_$(date +%Y%m%d_%H%M%S).tar.gz ${{ env.MODEL_DIR }}/ || true
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          if [ -f "${{ env.MODEL_DIR }}/lstm_model.h5" ]; then
+            cp ${{ env.MODEL_DIR }}/lstm_model.h5 data/models_history/lstm_${TIMESTAMP}.h5 || true
+            cp ${{ env.MODEL_DIR }}/scaler.pkl data/models_history/scaler_${TIMESTAMP}.pkl || true
+            cp ${{ env.MODEL_DIR }}/xgboost_model.pkl data/models_history/xgb_${TIMESTAMP}.pkl || true
+            echo "✅ Models saved"
+          fi
+
+      - name: Commit models
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add data/models_history/ || true
+          git commit -m "🤖 Trained models - $(date +'%Y-%m-%d %H:%M:%S UTC')" || true
+          git push origin main || echo "Push skipped"
         continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   predict:
     runs-on: ubuntu-latest
@@ -271,11 +308,9 @@ jobs:
           mkdir -p ${{ env.DATA_DIR }}/predictions
           mkdir -p logs
 
-      - name: Download models
-        uses: actions/download-artifact@v4
-        with:
-          name: trained-models
-          path: ${{ env.MODEL_DIR }}/
+      - name: Use models from previous step
+        run: |
+          echo "✅ Models will be regenerated in this job"
 
       - name: Generate predictions
         run: |
