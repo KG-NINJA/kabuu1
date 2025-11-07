@@ -9,8 +9,8 @@ on:
     branches:
       - main
   schedule:
+    # 毎営業日 UTC 09:00 に実行（日本時間 18:00）
     - cron: '0 9 * * 1-5'
-    - cron: '0 8 * * 1'
   workflow_dispatch:
 
 env:
@@ -306,21 +306,57 @@ jobs:
       - name: Create directories
         run: |
           mkdir -p ${{ env.DATA_DIR }}/predictions
+          mkdir -p ${{ env.MODEL_DIR }}
           mkdir -p logs
 
-      - name: Use models from previous step
+      - name: Regenerate all pipeline steps
         run: |
-          echo "✅ Models will be regenerated in this job"
+          # Data fetching
+          python src/data_fetcher.py \
+            --us-symbols AAPL GOOGL MSFT TSLA \
+            --jp-symbols 9984 6758 7203 8306 \
+            --output ${{ env.DATA_DIR }}/raw_data.csv \
+            --log logs/fetch.log
+          
+          # Feature engineering
+          python src/feature_engineering.py \
+            --input ${{ env.DATA_DIR }}/raw_data.csv \
+            --output ${{ env.DATA_DIR }}/processed/features.csv \
+            --log logs/features.log
+          
+          # Preprocessing
+          python src/preprocessor.py \
+            --input ${{ env.DATA_DIR }}/processed/features.csv \
+            --output ${{ env.DATA_DIR }}/processed/train_data.csv \
+            --test-output ${{ env.DATA_DIR }}/processed/test_data.csv \
+            --log logs/preprocessing.log
+          
+          # Training
+          python src/train_lstm.py \
+            --train-data ${{ env.DATA_DIR }}/processed/train_data.csv \
+            --test-data ${{ env.DATA_DIR }}/processed/test_data.csv \
+            --model-output ${{ env.MODEL_DIR }}/lstm_model.h5 \
+            --scaler-output ${{ env.MODEL_DIR }}/scaler.pkl \
+            --log logs/train_lstm.log \
+            --epochs 50 \
+            --batch-size 32
+          
+          python src/train_xgboost.py \
+            --train-data ${{ env.DATA_DIR }}/processed/train_data.csv \
+            --test-data ${{ env.DATA_DIR }}/processed/test_data.csv \
+            --model-output ${{ env.MODEL_DIR }}/xgboost_model.pkl \
+            --log logs/train_xgboost.log
+        continue-on-error: true
 
       - name: Generate predictions
         run: |
           python src/predict.py \
             --us-symbols AAPL GOOGL MSFT TSLA \
             --jp-symbols 9984 6758 7203 8306 \
-            --days-ahead 5 \
+            --days-ahead 1 \
             --output ${{ env.DATA_DIR }}/predictions/forecast.csv \
             --log logs/predict.log
-          echo "✅ Predictions generated"
+          echo "✅ Predictions generated for tomorrow"
         continue-on-error: true
 
       - name: Verify predictions file
@@ -339,7 +375,7 @@ jobs:
             cat ${{ env.DATA_DIR }}/predictions/forecast.csv
           fi
 
-      - name: Upload predictions artifact
+      - name: Upload predictions artifact (optional, small file only)
         uses: actions/upload-artifact@v4
         with:
           name: stock-predictions-${{ github.run_number }}
