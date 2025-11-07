@@ -1,0 +1,42 @@
+name: Daily Forecast & Archive
+
+on:
+  schedule:
+    - cron: "0 9 * * *"  # JST 18:00ごろ毎日実行
+  workflow_dispatch:
+
+jobs:
+  daily_forecast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install pandas yfinance scikit-learn
+
+      - name: Generate forecast CSV
+        run: |
+          PYTHONPATH=. python scripts/generate_forecast_csv.py --output forecast_data.csv
+
+      - name: Combine and validate forecast JSON
+        run: |
+          PYTHONPATH=. python scripts/combine_forecasts.py
+
+      - name: Auto-archive today's forecast
+        run: |
+          PYTHONPATH=. python scripts/auto_archive.py
+
+      - name: Trigger retraining workflow
+        uses: benc-uk/workflow-dispatch@v1
+        with:
+          workflow: "Retrain Forecast Model"
+          token: ${{ secrets.GITHUB_TOKEN }}
