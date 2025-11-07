@@ -34,11 +34,21 @@ jobs:
         run: |
           PYTHONPATH=. python scripts/generate_forecast_csv.py --output forecast_data.csv
           echo "✅ Forecast CSV generated from real stock data"
+          echo "📊 CSVファイルの内容を確認:"
+          head -20 forecast_data.csv || echo "CSVファイルが見つかりません"
+          echo "📊 CSVファイルの行数:"
+          wc -l forecast_data.csv || echo "CSVファイルが見つかりません"
 
       - name: Run prediction validation test
         run: |
+          echo "📊 CSVファイルの存在確認:"
+          ls -la forecast_data.csv || echo "❌ CSVファイルが見つかりません"
+          echo "📊 CSVファイルの最初の5行:"
+          head -5 forecast_data.csv || echo "CSVファイルが見つかりません"
           PYTHONPATH=. python src/predict.py --csv forecast_data.csv --output test_output.json
           echo "✅ Prediction validation test completed"
+          echo "📊 生成されたJSONの統計情報:"
+          python -c "import json; data = json.load(open('test_output.json')); print(f'銘柄数: {data.get(\"symbols_predicted\", 0)}'); print(f'予測数: {data.get(\"total_predictions\", 0)}'); print(f'ステータス: {data.get(\"generation_status\", \"unknown\")}')"
 
       - name: Run prediction pipeline smoke test
         run: |
