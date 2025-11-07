@@ -91,7 +91,7 @@ class DataFetcher:
                     self._resolve_symbol(ticker),
                     start=start_date.strftime("%Y-%m-%d"),
                     end=end_date.strftime("%Y-%m-%d"),
-=
+
                     interval=self.interval,
                     progress=False,
                 )
