@@ -1,261 +1,318 @@
-"""保存済みモデルを読み込み株価予測を生成する。"""
-from __future__ import annotations
+"""
+株価予測JSON生成システム
+検証機能付きで予測結果をJSON形式で出力
+"""
 
-import argparse
-from datetime import timedelta
-from pathlib import Path
-from typing import Dict, List
-
-import numpy as np
 import pandas as pd
+import json
+from datetime import datetime, date, timedelta
+from pathlib import Path
+from typing import Dict, Any, List, Optional
+import sys
+import os
+
+# 親ディレクトリをパスに追加
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src.validation_helpers import (
+    is_trading_day,
+    get_next_trading_day,
+    validate_price_prediction,
+    detect_scale_error,
+    recalculate_confidence
+)
 
 
-def load_trained_models() -> tuple:
-    """学習済みモデルを読み込む。"""
-    try:
-        import pickle
-
-        lstm_model = None
-        xgb_model = None
-        scaler = None
-
-        lstm_path = Path("models/lstm_model.h5")
-        xgb_path = Path("models/xgboost_model.pkl")
-        scaler_path = Path("models/scaler.pkl")
-
-        if lstm_path.exists():
-            try:
-                from tensorflow.keras.models import load_model
-
-                lstm_model = load_model(str(lstm_path))
-            except Exception as e:
-                print(f"⚠️ LSTM loading failed: {e}")
-
-        if xgb_path.exists():
-            try:
-                with open(xgb_path, "rb") as f:
-                    xgb_model = pickle.load(f)
-            except Exception as e:
-                print(f"⚠️ XGBoost loading failed: {e}")
-
-        if scaler_path.exists():
-            try:
-                with open(scaler_path, "rb") as f:
-                    scaler = pickle.load(f)
-            except Exception as e:
-                print(f"⚠️ Scaler loading failed: {e}")
-
-        return lstm_model, xgb_model, scaler
-    except Exception as e:
-        print(f"⚠️ Model loading error: {e}")
-        return None, None, None
-
-
-def generate_dummy_forecast(
-    symbols: List[str], days_ahead: int = 5
-) -> pd.DataFrame:
-    """ダミー予測を生成（モデルが利用できない場合）。"""
-    records = []
-    base_prices = {
-        "AAPL": 150.5,
-        "GOOGL": 185.3,
-        "MSFT": 420.1,
-        "TSLA": 285.5,
-        "9984": 3150.5,
-        "6758": 15200.0,
-        "7203": 2890.5,
-        "8306": 2450.0,
-    }
-
-    for symbol in symbols:
-        base_price = base_prices.get(symbol, 100.0)
-        last_date = pd.Timestamp.now()
-
-        for day in range(1, days_ahead + 1):
-            # ランダムウォークで予測
-            drift = (np.random.random() - 0.5) * base_price * 0.02
-            forecast_price = base_price + drift * day
-            confidence = 0.70 + np.random.random() * 0.15
-
-            target_date = last_date + timedelta(days=day)
-
-            records.append(
-                {
-                    "symbol": symbol,
-                    "date": target_date.strftime("%Y-%m-%d"),
-                    "forecast": round(forecast_price, 2),
-                    "confidence": round(confidence, 2),
-                }
-            )
-
-    return pd.DataFrame(records)
-
-
-def predict_with_models(
-    data_df: pd.DataFrame,
-    lstm_model,
-    xgb_model,
-    scaler,
-    days_ahead: int = 5,
-) -> pd.DataFrame:
-    """学習済みモデルで予測を生成。"""
-    records = []
-
-    for symbol in data_df["symbol"].unique():
-        symbol_data = data_df[data_df["symbol"] == symbol].copy()
-
-        if symbol_data.empty:
-            continue
-
-        # 最後の Close 価格
-        last_close = float(symbol_data["Close"].iloc[-1])
-
-        # LSTM 予測
-        lstm_pred = None
-        if lstm_model is not None:
-            try:
-                # 最後の 10 日間を使用
-                recent_data = symbol_data[["Close"]].tail(10).values
-                if len(recent_data) > 0:
-                    lstm_pred = float(lstm_model.predict(recent_data.reshape(1, -1, 1))[0, 0])
-            except Exception as e:
-                print(f"⚠️ LSTM prediction failed for {symbol}: {e}")
-
-        # XGBoost 予測
-        xgb_pred = None
-        if xgb_model is not None:
-            try:
-                features = symbol_data[
-                    ["Close", "Volume"]
-                ].tail(1).values
-                if len(features) > 0:
-                    xgb_pred = float(xgb_model.predict(features)[0])
-            except Exception as e:
-                print(f"⚠️ XGBoost prediction failed for {symbol}: {e}")
-
-        # 両方の予測を組み合わせ
-        predictions = [p for p in [lstm_pred, xgb_pred] if p is not None]
-        if predictions:
-            combined_pred = np.mean(predictions)
-        else:
-            combined_pred = last_close
-
-        # 信頼度スコア
-        confidence = 0.75 + np.random.random() * 0.15
-        if predictions:
-            confidence = min(0.95, confidence)
-        else:
-            confidence = 0.50
-
-        # 5営業日先の予測を生成
-        last_date = pd.Timestamp.now()
-
-        for day in range(1, days_ahead + 1):
-            # 線形補間で日次予測を計算
-            drift = (combined_pred - last_close) / days_ahead
-            forecast_price = last_close + drift * day
-
-            target_date = last_date + timedelta(days=day)
-
-            records.append(
-                {
-                    "symbol": symbol,
-                    "date": target_date.strftime("%Y-%m-%d"),
-                    "forecast": round(forecast_price, 2),
-                    "confidence": round(confidence, 2),
-                }
-            )
-
-    return pd.DataFrame(records)
-
-
-def main(
-    us_symbols: List[str],
-    jp_symbols: List[str],
-    days_ahead: int,
-    output_path: str,
-) -> None:
-    """メイン予測関数。"""
-    print("📊 Stock Price Prediction Pipeline")
-    print(f"🎯 Symbols: {us_symbols + jp_symbols}")
-    print(f"📅 Prediction horizon: {days_ahead} days")
-
-    # シンボル統合
-    all_symbols = us_symbols + jp_symbols
-    print(f"✅ Total symbols: {len(all_symbols)}")
-
-    # ダミーデータ生成（実データがない場合）
-    print("📁 Loading training data...")
-    try:
-        data_df = pd.read_csv("data/stock_data/processed/train_data.csv")
-        if data_df.empty:
-            raise ValueError("Training data is empty")
-        print(f"✅ Training data loaded: {len(data_df)} rows")
-    except Exception as e:
-        print(f"⚠️ Training data loading failed: {e}")
-        print("📈 Generating dummy data...")
-        data_df = pd.DataFrame({
-            "symbol": np.repeat(all_symbols, 100),
-            "Close": np.random.uniform(50, 500, len(all_symbols) * 100),
-            "Volume": np.random.uniform(1000000, 10000000, len(all_symbols) * 100),
-        })
-
-    # モデル読み込み
-    print("🤖 Loading models...")
-    lstm_model, xgb_model, scaler = load_trained_models()
-
-    # 予測生成
-    if lstm_model is not None or xgb_model is not None:
-        print("✅ Models loaded successfully")
-        forecast_df = predict_with_models(
-            data_df, lstm_model, xgb_model, scaler, days_ahead
-        )
+def determine_market(symbol: str) -> str:
+    """
+    銘柄コードから市場を判定
+    
+    Args:
+        symbol: 銘柄コード（例: 'AAPL', '7203'）
+    
+    Returns:
+        str: 'US' or 'JP'
+    """
+    # 数字のみの場合は日本株
+    if symbol.isdigit():
+        return 'JP'
+    # アルファベットの場合は米国株
+    elif symbol.isalpha():
+        return 'US'
+    # その他（例: '7203.T'）は日本株と判断
     else:
-        print("⚠️ Models not available, generating dummy predictions")
-        forecast_df = generate_dummy_forecast(all_symbols, days_ahead)
+        return 'JP'
 
-    # 出力
-    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-    forecast_df.to_csv(output_path, index=False)
-    print(f"\n✅ Forecast saved to {output_path}")
-    print(f"📊 Generated {len(forecast_df)} predictions")
-    print("\n📋 Sample forecasts:")
-    print(forecast_df.head(10))
+
+def generate_llm_prompts(forecast_csv: Optional[str] = None) -> Dict[str, Any]:
+    """
+    予測データから検証付きJSONを生成
+    
+    Args:
+        forecast_csv: 予測データのCSVファイルパス（オプション）
+    
+    Returns:
+        dict: 検証済み予測JSON
+    """
+    # CSVファイルが指定されていない場合は、サンプルデータを使用
+    if forecast_csv is None or not Path(forecast_csv).exists():
+        print("警告: CSVファイルが見つかりません。サンプルデータを使用します。")
+        # サンプルデータを生成（実際の使用時はCSVから読み込む）
+        forecast_df = _create_sample_data()
+    else:
+        forecast_df = pd.read_csv(forecast_csv)
+    
+    # 必要な列をチェック
+    required_columns = ['symbol', 'forecast', 'current_price', 'confidence']
+    missing_columns = [col for col in required_columns if col not in forecast_df.columns]
+    
+    if missing_columns:
+        raise ValueError(f"CSVに必要な列がありません: {missing_columns}")
+    
+    # 結果を格納するリスト
+    forecasts = []
+    data_issues = []
+    valid_count = 0
+    warning_count = 0
+    error_count = 0
+    
+    # 次の営業日を計算（最初の銘柄の日付を使用）
+    first_date = None
+    if 'date' in forecast_df.columns:
+        first_date_str = forecast_df['date'].iloc[0]
+        if isinstance(first_date_str, str):
+            first_date = datetime.strptime(first_date_str, '%Y-%m-%d').date()
+        else:
+            first_date = pd.to_datetime(first_date_str).date()
+    else:
+        # 日付が無い場合は今日から計算
+        first_date = date.today()
+    
+    # 次の営業日を取得（最初の銘柄の市場で判定）
+    next_trading_day = first_date
+    next_trading_day_note = None
+    
+    # 各予測に対して検証を実行
+    for idx, row in forecast_df.iterrows():
+        symbol = str(row['symbol'])
+        forecast_price = float(row['forecast'])
+        current_price = float(row['current_price'])
+        original_confidence = float(row['confidence'])
+        
+        # 市場を判定
+        market = determine_market(symbol)
+        
+        # 日付を取得
+        if 'date' in row and pd.notna(row['date']):
+            pred_date_str = str(row['date'])
+            try:
+                if isinstance(pred_date_str, str):
+                    pred_date = datetime.strptime(pred_date_str, '%Y-%m-%d').date()
+                else:
+                    pred_date = pd.to_datetime(pred_date_str).date()
+            except:
+                pred_date = first_date
+        else:
+            pred_date = first_date
+        
+        # 営業日判定と修正
+        if not is_trading_day(pred_date, market):
+            corrected_date = get_next_trading_day(pred_date, market)
+            if next_trading_day_note is None:
+                next_trading_day_note = f"{pred_date.strftime('%Y-%m-%d')}は営業日ではないため{corrected_date.strftime('%Y-%m-%d')}に修正"
+            pred_date = corrected_date
+            data_issues.append(f"Trading day detection error for {symbol} ({pred_date_str} is not a trading day)")
+        
+        # 次の営業日を更新（最初の銘柄の日付を使用）
+        if idx == 0:
+            next_trading_day = pred_date
+        
+        # 価格検証
+        validation = validate_price_prediction(
+            symbol,
+            forecast_price,
+            current_price,
+            market
+        )
+        
+        # スケール誤差検出
+        scale_check = detect_scale_error(
+            symbol,
+            forecast_price,
+            current_price
+        )
+        
+        # 信頼度再計算
+        confidence_result = recalculate_confidence(
+            forecast_price,
+            current_price,
+            original_confidence,
+            validation['severity'],
+            scale_check['has_error']
+        )
+        
+        # 統計を更新
+        if validation['severity'] == 'error':
+            error_count += 1
+        elif validation['severity'] == 'warning':
+            warning_count += 1
+        else:
+            valid_count += 1
+        
+        # 予測データを構築
+        forecast_data = {
+            'symbol': symbol,
+            'date': pred_date.strftime('%Y-%m-%d'),
+            'forecast': round(forecast_price, 2),
+            'current_price': round(current_price, 2),
+            'confidence': {
+                'original': round(original_confidence, 3),
+                'adjusted': round(confidence_result['adjusted_confidence'], 3),
+                'adjustment_reason': confidence_result['adjustment_reason']
+            },
+            'validation': {
+                'is_valid': validation['is_valid'],
+                'severity': validation['severity'],
+                'price_change_pct': round(validation['price_change_pct'], 2),
+                'issue': validation['issue']
+            },
+            'scale_check': {
+                'has_error': scale_check['has_error'],
+                'suspected_scale_factor': round(scale_check['suspected_scale_factor'], 2) if scale_check['suspected_scale_factor'] else None,
+                'note': scale_check['note']
+            }
+        }
+        
+        forecasts.append(forecast_data)
+    
+    # 統計情報を計算
+    original_confidences = [f['confidence']['original'] for f in forecasts]
+    adjusted_confidences = [f['confidence']['adjusted'] for f in forecasts]
+    
+    avg_confidence_original = sum(original_confidences) / len(original_confidences) if original_confidences else 0.0
+    avg_confidence_adjusted = sum(adjusted_confidences) / len(adjusted_confidences) if adjusted_confidences else 0.0
+    
+    # データ品質を判定
+    total_predictions = len(forecasts)
+    error_ratio = error_count / total_predictions if total_predictions > 0 else 0.0
+    
+    if error_ratio >= 0.5:
+        data_quality = "POOR"
+        recommendation = f"Use only {valid_count} valid predictions. {error_count} predictions contain errors."
+    elif error_ratio >= 0.3:
+        data_quality = "MODERATE"
+        recommendation = f"Use predictions with caution. {error_count} predictions contain errors."
+    else:
+        data_quality = "GOOD"
+        recommendation = "Most predictions are valid. Review warnings if any."
+    
+    # 生成ステータスを決定
+    if error_count > 0:
+        if warning_count > 0:
+            generation_status = "COMPLETED_WITH_WARNINGS"
+        else:
+            generation_status = "COMPLETED_WITH_ERRORS"
+    else:
+        if warning_count > 0:
+            generation_status = "COMPLETED_WITH_WARNINGS"
+        else:
+            generation_status = "COMPLETED"
+    
+    # 最終JSONを構築
+    result = {
+        'timestamp': datetime.now().isoformat(),
+        'generation_status': generation_status,
+        'next_trading_day': next_trading_day.strftime('%Y-%m-%d'),
+        'next_trading_day_note': next_trading_day_note,
+        'symbols_predicted': len(forecasts),
+        'total_predictions': len(forecasts),
+        'statistics': {
+            'avg_confidence_original': round(avg_confidence_original, 3),
+            'avg_confidence_adjusted': round(avg_confidence_adjusted, 3),
+            'confidence_reduction_reason': f"Multiple unrealistic predictions detected" if error_count > 0 else "No issues detected"
+        },
+        'forecasts': forecasts,
+        'summary': {
+            'valid_predictions': valid_count,
+            'warning_predictions': warning_count,
+            'error_predictions': error_count,
+            'recommendation': recommendation,
+            'data_quality': f"{data_quality} - {error_count}/{total_predictions} predictions are unrealistic"
+        },
+        'data_issues': data_issues if data_issues else []
+    }
+    
+    return result
+
+
+def _create_sample_data() -> pd.DataFrame:
+    """
+    サンプルデータを作成（テスト用）
+    
+    Returns:
+        pd.DataFrame: サンプル予測データ
+    """
+    # プロンプトの例に基づいたサンプルデータ
+    sample_data = {
+        'symbol': ['AAPL', 'GOOGL', 'MSFT', 'TSLA', '7203', '6758', '8306', '9984'],
+        'forecast': [151.83, 120.45, 380.20, 180.50, 2872.33, 15194.48, 2453.59, 3136.0],
+        'current_price': [269.77, 185.20, 452.30, 245.60, 3139.0, 4250.0, 2330.0, 23000.0],
+        'confidence': [0.80, 0.75, 0.82, 0.78, 0.73, 0.85, 0.77, 0.70],
+        'date': ['2025-11-08', '2025-11-08', '2025-11-08', '2025-11-08', 
+                 '2025-11-08', '2025-11-08', '2025-11-08', '2025-11-08']
+    }
+    return pd.DataFrame(sample_data)
+
+
+def save_json_output(data: Dict[str, Any], output_path: Optional[str] = None) -> str:
+    """
+    JSON出力を保存
+    
+    Args:
+        data: 保存するデータ
+        output_path: 出力パス（指定しない場合は自動生成）
+    
+    Returns:
+        str: 保存されたファイルパス
+    """
+    if output_path is None:
+        # darwin_analysisディレクトリを作成
+        output_dir = Path('darwin_analysis')
+        output_dir.mkdir(exist_ok=True)
+        output_path = str(output_dir / 'forecast_analysis.json')
+    
+    output_file = Path(output_path)
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    
+    with open(output_file, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2, default=str)
+    
+    return str(output_file)
+
+
+def main():
+    """メイン関数"""
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='株価予測JSON生成システム')
+    parser.add_argument('--csv', type=str, help='予測データのCSVファイルパス')
+    parser.add_argument('--output', type=str, help='出力JSONファイルパス')
+    args = parser.parse_args()
+    
+    # JSON生成
+    result = generate_llm_prompts(forecast_csv=args.csv)
+    
+    # JSON保存
+    output_path = save_json_output(result, args.output)
+    
+    print(f"✅ JSON生成完了: {output_path}")
+    print(f"   ステータス: {result['generation_status']}")
+    print(f"   有効予測: {result['summary']['valid_predictions']}")
+    print(f"   警告予測: {result['summary']['warning_predictions']}")
+    print(f"   エラー予測: {result['summary']['error_predictions']}")
+    print(f"   データ品質: {result['summary']['data_quality']}")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Stock price prediction")
-    parser.add_argument(
-        "--us-symbols",
-        nargs="+",
-        default=["AAPL", "GOOGL", "MSFT", "TSLA"],
-        help="US stock symbols",
-    )
-    parser.add_argument(
-        "--jp-symbols",
-        nargs="+",
-        default=["9984", "6758", "7203", "8306"],
-        help="Japanese stock symbols",
-    )
-    parser.add_argument(
-        "--days-ahead", type=int, default=5, help="Forecast horizon (days)"
-    )
-    parser.add_argument(
-        "--output",
-        default="data/stock_data/predictions/forecast.csv",
-        help="Output file path",
-    )
-    parser.add_argument("--log", default="logs/predict.log", help="Log file path")
+    main()
 
-    args = parser.parse_args()
-
-    # ロギング設定
-    import logging
-
-    logging.basicConfig(
-        filename=args.log,
-        level=logging.INFO,
-        format="%(asctime)s - %(levelname)s - %(message)s",
-    )
-
-    main(args.us_symbols, args.jp_symbols, args.days_ahead, args.output)
