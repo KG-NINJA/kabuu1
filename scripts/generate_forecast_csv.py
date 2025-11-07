@@ -76,7 +76,7 @@ jobs:
           print(f'Valid predictions: {data.get(\"summary\", {}).get(\"valid_predictions\", 0)}')
           print(f'Error predictions: {data.get(\"summary\", {}).get(\"error_predictions\", 0)}')
           print(f'Data quality: {data.get(\"summary\", {}).get(\"data_quality\", \"unknown\")}')
-          "
+          
 
       - name: Validate JSON structure
         run: |
