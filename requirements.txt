@@ -68,7 +68,7 @@ psutil==5.9.8
 schedule==1.2.0
 
 # Email
-secure-smtplib==0.0.1
+secure-smtplib==0.1.1
 
 # Time Series
 statsmodels==0.14.0
