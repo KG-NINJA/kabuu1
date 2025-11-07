@@ -11,46 +11,46 @@ from typing import Dict, Any, List, Optional
 import sys
 import os
 
-# 親ディレクトリをパスに追加
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# 親ディレクトリをパスに追加（CI環境でも動作するように）
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
 
-from src.validation_helpers import (
-    is_trading_day,
-    get_next_trading_day,
-    validate_price_prediction,
-    detect_scale_error,
-    recalculate_confidence
-)
-
-
-def determine_market(symbol: str) -> str:
-    """
-    銘柄コードから市場を判定
-    
-    Args:
-        symbol: 銘柄コード（例: 'AAPL', '7203'）
-    
-    Returns:
-        str: 'US' or 'JP'
-    """
-    # 数字のみの場合は日本株
-    if symbol.isdigit():
-        return 'JP'
-    # アルファベットの場合は米国株
-    elif symbol.isalpha():
-        return 'US'
-    # その他（例: '7203.T'）は日本株と判断
-    else:
-        return 'JP'
-
-
-def generate_llm_prompts(forecast_csv: Optional[str] = None) -> Dict[str, Any]:
-    """
-    予測データから検証付きJSONを生成
-    
-    Args:
-        forecast_csv: 予測データのCSVファイルパス（オプション）
-    
+# インポート（相対パスと絶対パスの両方に対応）
+try:
+    from src.validation_helpers import (
+        is_trading_day,
+        get_next_trading_day,
+        validate_price_prediction,
+        detect_scale_error,
+        recalculate_confidence
+    )
+except ImportError as e:
+    # 相対インポートを試す
+    try:
+        from validation_helpers import (
+            is_trading_day,
+            get_next_trading_day,
+            validate_price_prediction,
+            detect_scale_error,
+            recalculate_confidence
+        )
+    except ImportError:
+        # 最後の手段：直接パスからインポート
+        import importlib.util
+        validation_helpers_path = os.path.join(current_dir, 'validation_helpers.py')
+        if os.path.exists(validation_helpers_path):
+            spec = importlib.util.spec_from_file_location("validation_helpers", validation_helpers_path)
+            validation_helpers = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(validation_helpers)
+            is_trading_day = validation_helpers.is_trading_day
+            get_next_trading_day = validation_helpers.get_next_trading_day
+            validate_price_prediction = validation_helpers.validate_price_prediction
+            detect_scale_error = validation_helpers.detect_scale_error
+            recalculate_confidence = validation_helpers.recalculate_confidence
+        else:
+            raise ImportError(f"validation_helpers.py not found. Error: {e}")
     Returns:
         dict: 検証済み予測JSON
     """
