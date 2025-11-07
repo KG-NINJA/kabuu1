@@ -1,0 +1,42 @@
+name: Prediction Pipeline CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install core dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -r requirements.txt
+          if [ -f prediction_pipeline/requirements.txt ]; then
+            pip install -r prediction_pipeline/requirements.txt
+          fi
+
+      - name: Verify imports
+        run: |
+          python -c "import sys; sys.path.insert(0, '.'); from src.validation_helpers import is_trading_day, validate_price_prediction; print('✅ Validation helpers imported successfully')"
+
+      - name: Run prediction validation test
+        run: |
+          PYTHONPATH=. python src/predict.py --output test_output.json
+          echo "✅ Prediction validation test completed"
+
+      - name: Run prediction pipeline smoke test
+        run: |
+          if [ -f test_pipeline.py ]; then
+            python test_pipeline.py
+          fi
