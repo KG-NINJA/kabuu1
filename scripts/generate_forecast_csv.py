@@ -81,7 +81,6 @@ jobs:
       - name: Validate JSON structure
         run: |
           echo "🔍 Validating JSON structure..."
-          python -c "
           import json
           import sys
           
