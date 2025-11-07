@@ -1,70 +1,21 @@
 {
-  "timestamp": "2025-11-07T03:26:43.224328",
+  "timestamp": "2025-11-07T05:52:50.026248",
   "next_trading_day": "2025-11-08",
   "symbols_predicted": [
-    "AAPL",
-    "GOOGL",
-    "MSFT",
-    "TSLA",
-    "9984",
-    "6758",
-    "7203",
-    "8306"
+    "AAPL"
   ],
-  "total_predictions": 8,
+  "total_predictions": 1,
   "forecasts": [
     {
       "symbol": "AAPL",
-      "date": "2025-11-08",
-      "forecast": 151.83,
-      "confidence": 0.8
-    },
-    {
-      "symbol": "GOOGL",
-      "date": "2025-11-08",
-      "forecast": 184.85,
-      "confidence": 0.75
-    },
-    {
-      "symbol": "MSFT",
-      "date": "2025-11-08",
-      "forecast": 418.07,
-      "confidence": 0.76
-    },
-    {
-      "symbol": "TSLA",
-      "date": "2025-11-08",
-      "forecast": 285.91,
-      "confidence": 0.78
-    },
-    {
-      "symbol": "9984",
-      "date": "2025-11-08",
-      "forecast": 3136.03,
-      "confidence": 0.76
-    },
-    {
-      "symbol": "6758",
-      "date": "2025-11-08",
-      "forecast": 15194.48,
+      "date": "2025-01-08",
+      "forecast": 150.5,
       "confidence": 0.85
-    },
-    {
-      "symbol": "7203",
-      "date": "2025-11-08",
-      "forecast": 2872.33,
-      "confidence": 0.73
-    },
-    {
-      "symbol": "8306",
-      "date": "2025-11-08",
-      "forecast": 2453.59,
-      "confidence": 0.77
     }
   ],
   "statistics": {
-    "avg_confidence": 0.7749999999999999,
-    "min_confidence": 0.73,
+    "avg_confidence": 0.85,
+    "min_confidence": 0.85,
     "max_confidence": 0.85
   }
 }
