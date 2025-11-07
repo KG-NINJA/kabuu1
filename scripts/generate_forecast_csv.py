@@ -44,7 +44,8 @@ jobs:
             --us-symbols AAPL GOOGL MSFT TSLA \
             --jp-symbols 9984 6758 7203 8306 \
             --output forecast_data.csv \
-            --period 1y
+          data = stock.history(period='1y')
+
           
           echo ""
           echo "✅ Forecast generated"
