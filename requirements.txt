@@ -51,14 +51,15 @@ joblib==1.4.0
 # Financial
 stockstats==0.5.0
 empyrical==0.5.5
-TA-Lib==0.4.28
 holidays==0.34
 
 # Hyperparameter Optimization
 optuna==3.6.0
 
 # Technical Analysis
-talib-binary==0.4.24
+# TA-Lib and talib-binary are optional - install manually if needed
+# TA-Lib==0.4.28  # Requires system TA-Lib library
+# talib-binary  # May not support Python 3.11, install manually if needed
 
 # System Monitoring
 psutil==5.9.8
