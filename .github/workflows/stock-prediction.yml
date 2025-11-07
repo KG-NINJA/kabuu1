@@ -9,8 +9,10 @@ on:
     branches:
       - main
   schedule:
-    # 毎営業日 UTC 09:00 に実行（日本時間 18:00）
-    - cron: '0 9 * * 1-5'
+    # JP市場終値後：毎営業日 UTC 06:00（日本時間 15:00）
+    - cron: '0 6 * * 1-5'
+    # US市場終値後：毎営業日 UTC 21:00（日本時間 翌日 06:00）
+    - cron: '0 21 * * 1-5'
   workflow_dispatch:
 
 env:
@@ -383,24 +385,57 @@ jobs:
           retention-days: 7
         continue-on-error: true
 
-      - name: Commit predictions to repository
+      - name: Create analysis summary for Codex
         run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          mkdir -p data/predictions_history
+          mkdir -p darwin_analysis
           
-          if [ -f "${{ env.DATA_DIR }}/predictions/forecast.csv" ]; then
-            TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-            cp ${{ env.DATA_DIR }}/predictions/forecast.csv \
-              data/predictions_history/forecast_${TIMESTAMP}.csv
-            echo "✅ Copied forecast to data/predictions_history/"
-          else
-            echo "⚠️ No forecast file to copy"
-          fi
+          # 予測結果の要約を作成
+          python3 << 'EOF'
+          import pandas as pd
+          import json
+          from datetime import datetime, timedelta
           
-          git add data/predictions_history/ || true
-          git commit -m "📊 Stock predictions - $(date +'%Y-%m-%d %H:%M:%S UTC')" || true
-          git push origin main || echo "Push failed - likely no changes"
+          # 予測を読み込み
+          forecast_df = pd.read_csv('data/stock_data/predictions/forecast.csv')
+          
+          # 分析サマリー
+          analysis = {
+              "timestamp": datetime.now().isoformat(),
+              "next_trading_day": (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d"),
+              "symbols_predicted": list(forecast_df['symbol'].unique()),
+              "total_predictions": len(forecast_df),
+              "forecasts": forecast_df.to_dict('records'),
+              "statistics": {
+                  "avg_confidence": float(forecast_df['confidence'].mean()),
+                  "min_confidence": float(forecast_df['confidence'].min()),
+                  "max_confidence": float(forecast_df['confidence'].max()),
+              }
+          }
+          
+          # JSON に保存
+          with open('darwin_analysis/forecast_analysis.json', 'w') as f:
+              json.dump(analysis, f, indent=2)
+          
+          print("✅ Analysis summary created")
+          EOF
+        continue-on-error: true
+
+      - name: Generate LLM Prompts
+        run: |
+          mkdir -p darwin_analysis/llm_prompts
+          python3 src/llm_prompt_generator.py
+          echo "✅ LLM prompts generated"
+          ls -la darwin_analysis/llm_prompts/ || true
+        continue-on-error: true
+
+      - name: Commit analysis and LLM prompts
+        run: |
+          git config user.email "action@github.com"
+          git config user.name "GitHub Action"
+          git add darwin_analysis/ 2>/dev/null || true
+          git add data/predictions_history/ 2>/dev/null || true
+          git commit -m "🧬 Darwin2025: LLM prompts & predictions - $(date +'%Y-%m-%d %H:%M:%S UTC')" || echo "No changes"
+          git push origin main || echo "Push skipped"
         continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
