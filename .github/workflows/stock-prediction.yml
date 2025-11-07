@@ -109,13 +109,11 @@ jobs:
           cat logs/validation_report.txt 2>/dev/null || echo "Validation skipped"
         continue-on-error: true
 
-      - name: Upload raw data
-        uses: actions/upload-artifact@v4
-        with:
-          name: raw-stock-data
-          path: ${{ env.DATA_DIR }}/raw_data.csv
-          retention-days: 30
-        continue-on-error: false
+      - name: Save raw data to repo
+        run: |
+          mkdir -p data/raw_data_history
+          cp ${{ env.DATA_DIR }}/raw_data.csv data/raw_data_history/raw_$(date +%Y%m%d_%H%M%S).csv || true
+        continue-on-error: true
 
   preprocess:
     runs-on: ubuntu-latest
@@ -180,13 +178,11 @@ jobs:
           echo "📁 Checking processed data..."
           ls -la ${{ env.DATA_DIR }}/processed/ || echo "Directory empty"
 
-      - name: Upload processed data
-        uses: actions/upload-artifact@v4
-        with:
-          name: processed-stock-data
-          path: ${{ env.DATA_DIR }}/processed/
-          retention-days: 30
-        continue-on-error: false
+      - name: Save processed data to repo
+        run: |
+          mkdir -p data/processed_data_history
+          tar -czf data/processed_data_history/processed_$(date +%Y%m%d_%H%M%S).tar.gz ${{ env.DATA_DIR }}/processed/ || true
+        continue-on-error: true
 
   train-model:
     runs-on: ubuntu-latest
@@ -244,13 +240,11 @@ jobs:
           echo "📁 Checking trained models..."
           ls -lah ${{ env.MODEL_DIR }}/ || echo "Models directory empty"
 
-      - name: Upload models
-        uses: actions/upload-artifact@v4
-        with:
-          name: trained-models
-          path: ${{ env.MODEL_DIR }}/
-          retention-days: 60
-        continue-on-error: false
+      - name: Save models to repo
+        run: |
+          mkdir -p data/models_history
+          tar -czf data/models_history/models_$(date +%Y%m%d_%H%M%S).tar.gz ${{ env.MODEL_DIR }}/ || true
+        continue-on-error: true
 
   predict:
     runs-on: ubuntu-latest
@@ -316,7 +310,7 @@ jobs:
           name: stock-predictions-${{ github.run_number }}
           path: ${{ env.DATA_DIR }}/predictions/forecast.csv
           retention-days: 7
-        continue-on-error: false
+        continue-on-error: true
 
       - name: Commit predictions to repository
         run: |
