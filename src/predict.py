@@ -10,7 +10,9 @@ import os
 import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+
+from typing import Any, Dict, List, Optional
+
 
 import pandas as pd
 
@@ -30,13 +32,17 @@ except ImportError:
         fetch_stock_data = None  # type: ignore
 
 try:
-    from src.validation_helpers import (
-        is_trading_day,
-        get_next_trading_day,
-        validate_price_prediction,
-        detect_scale_error,
-        recalculate_confidence
-    )
+
+        from src.validation_helpers import (
+            is_trading_day,
+            get_next_trading_day,
+            validate_price_prediction,
+            detect_scale_error,
+            enforce_price_ratio_limits,
+            validate_history_bounds,
+            recalculate_confidence
+        )
+
 except ImportError as e:
     # 相対インポートを試す
     try:
@@ -45,6 +51,8 @@ except ImportError as e:
             get_next_trading_day,
             validate_price_prediction,
             detect_scale_error,
+            enforce_price_ratio_limits,
+            validate_history_bounds,
             recalculate_confidence
         )
     except ImportError:
@@ -59,6 +67,8 @@ except ImportError as e:
             get_next_trading_day = validation_helpers.get_next_trading_day
             validate_price_prediction = validation_helpers.validate_price_prediction
             detect_scale_error = validation_helpers.detect_scale_error
+            enforce_price_ratio_limits = validation_helpers.enforce_price_ratio_limits
+            validate_history_bounds = validation_helpers.validate_history_bounds
             recalculate_confidence = validation_helpers.recalculate_confidence
         else:
             raise ImportError(f"validation_helpers.py not found. Error: {e}")
@@ -281,11 +291,12 @@ def generate_llm_prompts(
         forecast_price = float(row['forecast'])
         current_price = float(row['current_price'])
         original_confidence = float(row['confidence'])
-        
+
         # 市場を判定
         market = row['market'] if 'market' in row and pd.notna(row['market']) else determine_market(symbol)
 
         # 日付を取得
+        pred_date_str = None
         if 'date' in row and pd.notna(row['date']):
             pred_date_str = str(row['date'])
             try:
@@ -293,23 +304,61 @@ def generate_llm_prompts(
                     pred_date = datetime.strptime(pred_date_str, '%Y-%m-%d').date()
                 else:
                     pred_date = pd.to_datetime(pred_date_str).date()
-            except:
+            except Exception:
                 pred_date = first_date
         else:
             pred_date = first_date
-        
+
+        symbol_issues: List[Dict[str, Any]] = []
+        zero_reasons: List[str] = []
+
         # 営業日判定と修正
         if not is_trading_day(pred_date, market):
             corrected_date = get_next_trading_day(pred_date, market)
             if next_trading_day_note is None:
-                next_trading_day_note = f"{pred_date.strftime('%Y-%m-%d')}は営業日ではないため{corrected_date.strftime('%Y-%m-%d')}に修正"
+                next_trading_day_note = (
+                    f"{pred_date.strftime('%Y-%m-%d')}は営業日ではないため"
+                    f"{corrected_date.strftime('%Y-%m-%d')}に修正"
+                )
+            data_issue = {
+                'symbol': symbol,
+                'issue_type': 'trading_day_adjustment',
+                'details': {
+                    'market': market,
+                    'original_date': pred_date.strftime('%Y-%m-%d'),
+                    'corrected_date': corrected_date.strftime('%Y-%m-%d'),
+                },
+            }
+            data_issues.append(data_issue)
+            symbol_issues.append(data_issue)
             pred_date = corrected_date
-            data_issues.append(f"Trading day detection error for {symbol} ({pred_date_str} is not a trading day)")
-        
+
         # 次の営業日を更新（最初の銘柄の日付を使用）
         if idx == 0:
             next_trading_day = pred_date
-        
+
+        # 履歴データを正規化
+        history_records: List[Dict[str, Any]] = []
+        history_value: Optional[Any] = None
+        if 'history' in row:
+            raw_history = row['history']
+            if isinstance(raw_history, list):
+                history_records = [entry for entry in raw_history if isinstance(entry, dict)]
+            elif isinstance(raw_history, dict):
+                history_records = [raw_history]
+            elif isinstance(raw_history, str):
+                try:
+                    parsed_history = json.loads(raw_history)
+                except json.JSONDecodeError:
+                    parsed_history = None
+                if isinstance(parsed_history, dict):
+                    history_records = [parsed_history]
+                elif isinstance(parsed_history, list):
+                    history_records = [entry for entry in parsed_history if isinstance(entry, dict)]
+            elif raw_history is None or (isinstance(raw_history, float) and math.isnan(raw_history)):
+                history_records = []
+            history_value = history_records if history_records else None
+
         # 価格検証
         validation = validate_price_prediction(
             symbol,
@@ -317,31 +366,164 @@ def generate_llm_prompts(
             current_price,
             market
         )
-        
+
+        # 倍率チェック
+        ratio_check = enforce_price_ratio_limits(
+            symbol,
+            forecast_price,
+            current_price,
+            market,
+        )
+
+        # 履歴範囲チェック
+        history_check = validate_history_bounds(
+            symbol,
+            market,
+            history_records,
+            forecast_price,
+            current_price,
+        )
+
         # スケール誤差検出
         scale_check = detect_scale_error(
             symbol,
             forecast_price,
             current_price
         )
-        
+
+        # 重大な問題を収集
+        if validation.get('hard_limit_triggered'):
+            zero_reasons.append(validation['issue'] or 'Daily move exceeded hard limit')
+            data_issue = {
+                'symbol': symbol,
+                'issue_type': 'daily_change_limit',
+                'details': {
+                    'market': market,
+                    'forecast_price': forecast_price,
+                    'current_price': current_price,
+                    'price_change_pct': validation['price_change_pct'],
+                    'limit_threshold_pct': validation['limit_threshold_pct'],
+                },
+            }
+            data_issues.append(data_issue)
+            symbol_issues.append(data_issue)
+
+        if not ratio_check['is_valid']:
+            zero_reasons.append(ratio_check['note'])
+            data_issue = {
+                'symbol': symbol,
+                'issue_type': 'price_ratio_violation',
+                'details': {
+                    'market': market,
+                    'forecast_price': forecast_price,
+                    'current_price': current_price,
+                    'ratio': ratio_check['ratio'],
+                    'bounds': ratio_check['bounds'],
+                },
+            }
+            data_issues.append(data_issue)
+            symbol_issues.append(data_issue)
+        elif ratio_check['severity'] == 'warning':
+            symbol_issues.append(
+                {
+                    'symbol': symbol,
+                    'issue_type': 'price_ratio_near_limit',
+                    'details': {
+                        'market': market,
+                        'ratio': ratio_check['ratio'],
+                        'bounds': ratio_check['bounds'],
+                    },
+                }
+            )
+
+        if history_check['severity'] == 'error':
+            zero_reasons.append(history_check['note'])
+            data_issue = {
+                'symbol': symbol,
+                'issue_type': 'history_outlier',
+                'details': {
+                    'market': market,
+                    'forecast_price': forecast_price,
+                    'current_price': current_price,
+                    'stats': history_check.get('stats', {}),
+                },
+            }
+            data_issues.append(data_issue)
+            symbol_issues.append(data_issue)
+        elif history_check['severity'] == 'warning':
+            symbol_issues.append(
+                {
+                    'symbol': symbol,
+                    'issue_type': 'history_near_boundary',
+                    'details': {
+                        'market': market,
+                        'forecast_price': forecast_price,
+                        'current_price': current_price,
+                        'stats': history_check.get('stats', {}),
+                    },
+                }
+            )
+
+        if scale_check['has_error']:
+            zero_reasons.append(scale_check['note'])
+            data_issue = {
+                'symbol': symbol,
+                'issue_type': 'scale_error',
+                'details': {
+                    'market': market,
+                    'forecast_price': forecast_price,
+                    'current_price': current_price,
+                    'suspected_scale_factor': scale_check['suspected_scale_factor'],
+                },
+            }
+            data_issues.append(data_issue)
+            symbol_issues.append(data_issue)
+
+        combined_zero_reason = '; '.join(dict.fromkeys(zero_reasons)) if zero_reasons else None
+
         # 信頼度再計算
         confidence_result = recalculate_confidence(
             forecast_price,
             current_price,
             original_confidence,
             validation['severity'],
-            scale_check['has_error']
+            scale_check['has_error'],
+            force_zero_reason=combined_zero_reason,
         )
-        
+
+        # 全体的な深刻度を判定
+        overall_severity = validation['severity']
+        if (
+            validation.get('hard_limit_triggered')
+            or not ratio_check['is_valid']
+            or history_check['severity'] == 'error'
+            or scale_check['has_error']
+        ):
+            overall_severity = 'error'
+        elif overall_severity != 'warning' and (
+            ratio_check['severity'] == 'warning' or history_check['severity'] == 'warning'
+        ):
+            overall_severity = 'warning'
+
         # 統計を更新
-        if validation['severity'] == 'error':
+        if overall_severity == 'error':
             error_count += 1
-        elif validation['severity'] == 'warning':
+        elif overall_severity == 'warning':
             warning_count += 1
         else:
             valid_count += 1
-        
+
+        ratio_value = ratio_check.get('ratio')
+        ratio_serializable: Optional[float] = None
+        if isinstance(ratio_value, (int, float)) and math.isfinite(ratio_value):
+            ratio_serializable = round(float(ratio_value), 4)
+
+        limit_threshold = validation.get('limit_threshold_pct')
+        if isinstance(limit_threshold, (int, float)) and math.isfinite(limit_threshold):
+            limit_threshold = round(float(limit_threshold), 2)
+        else:
+            limit_threshold = None
+
         # 予測データを構築
         forecast_data = {
             'symbol': symbol,
@@ -351,36 +533,49 @@ def generate_llm_prompts(
             'confidence': {
                 'original': round(original_confidence, 3),
                 'adjusted': round(confidence_result['adjusted_confidence'], 3),
-                'adjustment_reason': confidence_result['adjustment_reason']
+                'adjustment_reason': confidence_result['adjustment_reason'],
             },
             'validation': {
                 'is_valid': validation['is_valid'],
                 'severity': validation['severity'],
                 'price_change_pct': round(validation['price_change_pct'], 2),
-                'issue': validation['issue']
+                'issue': validation['issue'],
+                'hard_limit_triggered': validation.get('hard_limit_triggered', False),
+                'limit_threshold_pct': limit_threshold,
             },
             'scale_check': {
                 'has_error': scale_check['has_error'],
-                'suspected_scale_factor': round(scale_check['suspected_scale_factor'], 2) if scale_check['suspected_scale_factor'] else None,
-                'note': scale_check['note']
-            }
+                'suspected_scale_factor': round(scale_check['suspected_scale_factor'], 2)
+                if scale_check['suspected_scale_factor']
+                else None,
+                'note': scale_check['note'],
+            },
+            'ratio_check': {
+                'is_valid': ratio_check['is_valid'],
+                'severity': ratio_check['severity'],
+                'ratio': ratio_serializable,
+                'bounds': ratio_check.get('bounds'),
+                'note': ratio_check['note'],
+            },
+            'history_check': {
+                'severity': history_check['severity'],
+                'note': history_check['note'],
+                'stats': history_check.get('stats'),
+            },
+            'overall_severity': overall_severity,
         }
-        
+
         if 'market' in row:
             forecast_data['market'] = row['market']
+        else:
+            forecast_data['market'] = market
 
-        if 'history' in row:
-            history_value = row['history']
-            if not isinstance(history_value, (list, dict)):
-                if isinstance(history_value, str):
-                    try:
-                        history_value = json.loads(history_value)
-                    except json.JSONDecodeError:
-                        pass
-                elif history_value is None or (isinstance(history_value, float) and math.isnan(history_value)):
-                    history_value = None
-            if history_value is not None:
-                forecast_data['historical_context'] = history_value
+        if history_value is not None:
+            forecast_data['historical_context'] = history_value
+
+        if symbol_issues:
+            forecast_data['data_quality_flags'] = [issue['issue_type'] for issue in symbol_issues]
+
 
         forecasts.append(forecast_data)
     
@@ -428,7 +623,11 @@ def generate_llm_prompts(
         'statistics': {
             'avg_confidence_original': round(avg_confidence_original, 3),
             'avg_confidence_adjusted': round(avg_confidence_adjusted, 3),
-            'confidence_reduction_reason': f"Multiple unrealistic predictions detected" if error_count > 0 else "No issues detected"
+            'confidence_reduction_reason': (
+                'Guardrail violations triggered confidence resets'
+                if error_count > 0
+                else 'No guardrail violations detected'
+            )
         },
         'forecasts': forecasts,
         'summary': {
@@ -436,7 +635,7 @@ def generate_llm_prompts(
             'warning_predictions': warning_count,
             'error_predictions': error_count,
             'recommendation': recommendation,
-            'data_quality': f"{data_quality} - {error_count}/{total_predictions} predictions are unrealistic"
+            'data_quality': f"{data_quality} - {error_count}/{total_predictions} predictions flagged by guardrails"
         },
         'data_issues': data_issues if data_issues else []
     }
@@ -452,15 +651,28 @@ def _create_sample_data() -> pd.DataFrame:
         pd.DataFrame: サンプル予測データ
     """
     # プロンプトの例に基づいたサンプルデータ
+    today = date.today()
+    us_date = get_next_trading_day(today, 'US')
+    jp_date = get_next_trading_day(today, 'JP')
+
+    symbols = ['AAPL', 'GOOGL', 'MSFT', 'TSLA', '7203', '6758', '8306', '9984']
+    markets = ['US', 'US', 'US', 'US', 'JP', 'JP', 'JP', 'JP']
+    current_prices = [192.15, 135.42, 415.33, 248.27, 2250.5, 15500.0, 1780.0, 6600.0]
+    forecast_prices = [price * 1.015 for price in current_prices]
+    confidences = [0.8, 0.76, 0.82, 0.78, 0.74, 0.85, 0.77, 0.72]
+    history_placeholder: List[List[Dict[str, Any]]] = [[] for _ in symbols]
+    dates = [us_date.strftime('%Y-%m-%d')] * 4 + [jp_date.strftime('%Y-%m-%d')] * 4
+
     sample_data = {
-        'symbol': ['AAPL', 'GOOGL', 'MSFT', 'TSLA', '7203', '6758', '8306', '9984'],
-        'market': ['US', 'US', 'US', 'US', 'JP', 'JP', 'JP', 'JP'],
-        'forecast': [151.83, 120.45, 380.20, 180.50, 2872.33, 15194.48, 2453.59, 3136.0],
-        'current_price': [269.77, 185.20, 452.30, 245.60, 3139.0, 4250.0, 2330.0, 23000.0],
-        'confidence': [0.80, 0.75, 0.82, 0.78, 0.73, 0.85, 0.77, 0.70],
-        'history': [[] for _ in range(8)],
-        'date': ['2025-11-08', '2025-11-08', '2025-11-08', '2025-11-08',
-                 '2025-11-08', '2025-11-08', '2025-11-08', '2025-11-08']
+
+        'symbol': symbols,
+        'market': markets,
+        'forecast': [round(value, 2) for value in forecast_prices],
+        'current_price': current_prices,
+        'confidence': confidences,
+        'history': history_placeholder,
+        'date': dates,
+
     }
     return pd.DataFrame(sample_data)
 
