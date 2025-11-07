@@ -104,8 +104,9 @@ class DataFetcher:
         dataframe = dataframe.rename(columns={"Date": "date"})
         for column in ["Open", "High", "Low", "Close", "Adj Close", "Volume"]:
             if column not in dataframe:
-                dataframe[column] = dataframe.get("Close", pd.Series(dtype=float))
-        numeric_columns = [
+               dataframe[numeric_columns] = (
+    dataframe[numeric_columns].ffill().bfill()
+)
             "Open",
             "High",
             "Low",
