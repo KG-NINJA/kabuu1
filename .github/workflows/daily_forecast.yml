@@ -2,8 +2,12 @@ name: Daily Forecast & Archive
 
 on:
   schedule:
-    - cron: "0 9 * * *"  # JST 18:00ごろ毎日実行
+    # JST 18:00ごろ（UTC 9:00）
+    - cron: "0 9 * * *"
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   daily_forecast:
@@ -11,29 +15,59 @@ jobs:
     timeout-minutes: 25
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Python
+      - name: Setup Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Install dependencies
         run: |
-          pip install pandas yfinance scikit-learn
+          python -m pip install --upgrade pip setuptools wheel
+          pip install pandas yfinance scikit-learn holidays
 
       - name: Generate forecast CSV
         run: |
-          PYTHONPATH=. python scripts/generate_forecast_csv.py --output forecast_data.csv
+          echo "📈 Generating forecast..."
+          mkdir -p data/predictions_history
+          PYTHONPATH=. python scripts/generate_forecast_csv.py \
+            --us-symbols AAPL GOOGL MSFT TSLA \
+            --jp-symbols 9984 6758 7203 8306 \
+            --output data/predictions_history/forecast_$(date +"%Y%m%d_%H%M%S").csv
+          echo "✅ Forecast CSV created."
 
-      - name: Combine and validate forecast JSON
+      - name: Combine and validate forecasts
         run: |
-          PYTHONPATH=. python scripts/combine_forecasts.py
+          echo "📊 Combining recent forecasts..."
+          PYTHONPATH=. python scripts/combine_forecasts.py \
+            --input-dir data/predictions_history \
+            --output data/forecast_summary.json
+          echo "✅ Combined forecast JSON generated."
 
       - name: Auto-archive today's forecast
         run: |
-          PYTHONPATH=. python scripts/auto_archive.py
+          echo "🗂 Archiving latest forecast..."
+          PYTHONPATH=. python scripts/auto_archive.py \
+            --input data/forecast_summary.json \
+            --archive-dir data/archive
+          echo "✅ Archive complete."
+
+      - name: Commit and push results
+        run: |
+          git config user.email "action@github.com"
+          git config user.name "GitHub Action"
+          git add data/
+          if ! git diff --staged --quiet; then
+            git commit -m "📦 Auto archive and forecast update $(date +'%Y-%m-%d %H:%M:%S UTC')"
+            git push origin main
+          else
+            echo "ℹ️ No changes to commit"
+          fi
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Trigger retraining workflow
         uses: benc-uk/workflow-dispatch@v1
