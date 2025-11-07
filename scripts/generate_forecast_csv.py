@@ -65,7 +65,7 @@ jobs:
           
           echo "✅ Prediction completed"
           echo "📊 JSON Statistics:"
-          python -c 
+         
           import json
           with open('darwin_analysis/forecast_analysis.json') as f:
               data = json.load(f)
