@@ -18,7 +18,7 @@ jobs:
         with:
           python-version: "3.11"
 
-           - name: Install core dependencies
+      - name: Install core dependencies
         run: |
           python -m pip install --upgrade pip setuptools wheel
           pip install -r requirements.txt
@@ -30,9 +30,14 @@ jobs:
         run: |
           python -c "import sys; sys.path.insert(0, '.'); from src.validation_helpers import is_trading_day, validate_price_prediction; print('✅ Validation helpers imported successfully')"
 
+      - name: Generate forecast CSV from real stock data
+        run: |
+          PYTHONPATH=. python scripts/generate_forecast_csv.py --output forecast_data.csv
+          echo "✅ Forecast CSV generated from real stock data"
+
       - name: Run prediction validation test
         run: |
-          PYTHONPATH=. python src/predict.py --output test_output.json
+          PYTHONPATH=. python src/predict.py --csv forecast_data.csv --output test_output.json
           echo "✅ Prediction validation test completed"
 
       - name: Run prediction pipeline smoke test
