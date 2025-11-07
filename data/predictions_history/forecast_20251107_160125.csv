@@ -1,0 +1,9 @@
+symbol,market,current_price,forecast,next_trading_day,timestamp,error
+AAPL,US,270.93,269.9,2025-11-10,2025-11-07T16:01:26.786448,
+GOOGL,US,276.89,276.61,2025-11-10,2025-11-07T16:01:26.961517,
+MSFT,US,495.7,500.02,2025-11-10,2025-11-07T16:01:27.605406,
+TSLA,US,430.27,435.73,2025-11-10,2025-11-07T16:01:27.888786,
+9984,JP,,,,,No data for 9984
+6758,JP,,,,,No data for 6758
+7203,JP,,,,,No data for 7203
+8306,JP,,,,,No data for 8306
