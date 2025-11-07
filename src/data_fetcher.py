@@ -24,12 +24,10 @@ DEFAULT_TICKERS = [
     "GOOGL",
     "MSFT",
     "TSLA",
-
     "9984",
     "6758",
     "7203",
     "8306",
-
 ]
 
 
@@ -48,7 +46,6 @@ class DataFetcher:
 
     tickers: Iterable[str] = field(default_factory=lambda: list(DEFAULT_TICKERS))
     data_dir: Path = Path("data/raw")
-
     interval: str = "1d"
 
     def __post_init__(self) -> None:
@@ -63,14 +60,17 @@ class DataFetcher:
             dataframe["ticker"] = ticker
             path = self.data_dir / f"{ticker.replace('.', '_')}.csv"
             dataframe.to_csv(path, index=False)
-            results.append(FetchResult(ticker=ticker, dataframe=dataframe, path=path))
+            results.append(
+                FetchResult(ticker=ticker, dataframe=dataframe, path=path)
+            )
         if results:
-            combined = pd.concat([res.dataframe for res in results], ignore_index=True)
+            combined = pd.concat(
+                [res.dataframe for res in results], ignore_index=True
+            )
             combined_path = self.data_dir / "combined.csv"
             combined.to_csv(combined_path, index=False)
             LOGGER.info("株価データを %s に保存しました", combined_path)
         return results
-
 
     def _resolve_symbol(self, ticker: str) -> str:
         """yfinance へ渡すシンボルを算出する。"""
@@ -78,49 +78,49 @@ class DataFetcher:
             return f"{ticker}.T"
         return ticker
 
-
     def _download_ticker(self, ticker: str) -> pd.DataFrame:
         """単一銘柄のデータを取得する。失敗時はダミーデータを生成する。"""
         dataframe: Optional[pd.DataFrame] = None
         if yf is not None:
             try:
-
                 end_date = datetime.utcnow()
                 start_date = end_date - timedelta(days=365)
                 dataframe = yf.download(
                     self._resolve_symbol(ticker),
                     start=start_date.strftime("%Y-%m-%d"),
                     end=end_date.strftime("%Y-%m-%d"),
-
                     interval=self.interval,
                     progress=False,
                 )
             except Exception as error:  # pragma: no cover - ネットワーク依存
                 LOGGER.warning("%s の取得に失敗しました: %s", ticker, error)
+
         if dataframe is None or dataframe.empty:
             LOGGER.info("%s のダミーデータを生成します", ticker)
             dataframe = self._generate_dummy_data(ticker)
+
         dataframe = dataframe.reset_index(drop=False)
         dataframe = dataframe.rename(columns={"Date": "date"})
+
+        # 必要なカラムを追加
         for column in ["Open", "High", "Low", "Close", "Adj Close", "Volume"]:
             if column not in dataframe:
-               dataframe[numeric_columns] = (
-    dataframe[numeric_columns].ffill().bfill()
-)
-            "Open",
-            "High",
-            "Low",
-            "Close",
-            "Adj Close",
-            "Volume",
-        
+                dataframe[column] = dataframe.get("Close", pd.Series(dtype=float))
+
+        # 欠損値を補完
+        numeric_columns = ["Open", "High", "Low", "Close", "Adj Close", "Volume"]
         dataframe[numeric_columns] = (
-            dataframe[numeric_columns].fillna(method="ffill").bfill()
+            dataframe[numeric_columns].ffill().bfill()
         )
-        dataframe["date"] = pd.to_datetime(dataframe["date"]).dt.strftime("%Y-%m-%d")
+
+        dataframe["date"] = pd.to_datetime(dataframe["date"]).dt.strftime(
+            "%Y-%m-%d"
+        )
         return dataframe
 
-    def _generate_dummy_data(self, ticker: str, days: int = 252) -> pd.DataFrame:
+    def _generate_dummy_data(
+        self, ticker: str, days: int = 252
+    ) -> pd.DataFrame:
         """トレード日数分のダミー株価を生成する。"""
         end = datetime.utcnow()
         start = end - timedelta(days=days)
@@ -131,7 +131,9 @@ class DataFetcher:
         prices = base_price + np.cumsum(changes)
         highs = prices + rng.normal(loc=1.0, scale=0.5, size=len(dates))
         lows = prices - rng.normal(loc=1.0, scale=0.5, size=len(dates))
-        volumes = rng.integers(low=500_000, high=5_000_000, size=len(dates))
+        volumes = rng.integers(
+            low=500_000, high=5_000_000, size=len(dates)
+        )
         dataframe = pd.DataFrame(
             {
                 "date": dates,
