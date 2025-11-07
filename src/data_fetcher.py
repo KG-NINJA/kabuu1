@@ -113,7 +113,7 @@ class DataFetcher:
             "Close",
             "Adj Close",
             "Volume",
-        ]
+        
         dataframe[numeric_columns] = (
             dataframe[numeric_columns].fillna(method="ffill").bfill()
         )
