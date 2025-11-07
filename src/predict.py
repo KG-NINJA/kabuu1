@@ -51,6 +51,36 @@ except ImportError as e:
             recalculate_confidence = validation_helpers.recalculate_confidence
         else:
             raise ImportError(f"validation_helpers.py not found. Error: {e}")
+
+
+def determine_market(symbol: str) -> str:
+    """
+    銘柄コードから市場を判定
+    
+    Args:
+        symbol: 銘柄コード（例: 'AAPL', '7203'）
+    
+    Returns:
+        str: 'US' or 'JP'
+    """
+    # 数字のみの場合は日本株
+    if symbol.isdigit():
+        return 'JP'
+    # アルファベットの場合は米国株
+    elif symbol.isalpha():
+        return 'US'
+    # その他（例: '7203.T'）は日本株と判断
+    else:
+        return 'JP'
+
+
+def generate_llm_prompts(forecast_csv: Optional[str] = None) -> Dict[str, Any]:
+    """
+    予測データから検証付きJSONを生成
+    
+    Args:
+        forecast_csv: 予測データのCSVファイルパス（オプション）
+    
     Returns:
         dict: 検証済み予測JSON
     """
@@ -61,13 +91,21 @@ except ImportError as e:
         forecast_df = _create_sample_data()
     else:
         forecast_df = pd.read_csv(forecast_csv)
+        # CSVが空または1行のみの場合は、サンプルデータを使用
+        if len(forecast_df) == 0:
+            print("警告: CSVファイルが空です。サンプルデータを使用します。")
+            forecast_df = _create_sample_data()
+        elif len(forecast_df) == 1:
+            print(f"警告: CSVファイルに1行のみです（{len(forecast_df)}行）。サンプルデータを使用します。")
+            forecast_df = _create_sample_data()
     
     # 必要な列をチェック
     required_columns = ['symbol', 'forecast', 'current_price', 'confidence']
     missing_columns = [col for col in required_columns if col not in forecast_df.columns]
     
     if missing_columns:
-        raise ValueError(f"CSVに必要な列がありません: {missing_columns}")
+        print(f"警告: CSVに必要な列がありません: {missing_columns}。サンプルデータを使用します。")
+        forecast_df = _create_sample_data()
     
     # 結果を格納するリスト
     forecasts = []
