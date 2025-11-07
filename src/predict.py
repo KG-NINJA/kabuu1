@@ -10,7 +10,9 @@ import os
 import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
+
 from typing import Any, Dict, List, Optional
+
 
 import pandas as pd
 
@@ -30,6 +32,7 @@ except ImportError:
         fetch_stock_data = None  # type: ignore
 
 try:
+
         from src.validation_helpers import (
             is_trading_day,
             get_next_trading_day,
@@ -39,6 +42,7 @@ try:
             validate_history_bounds,
             recalculate_confidence
         )
+
 except ImportError as e:
     # 相対インポートを試す
     try:
@@ -572,6 +576,7 @@ def generate_llm_prompts(
         if symbol_issues:
             forecast_data['data_quality_flags'] = [issue['issue_type'] for issue in symbol_issues]
 
+
         forecasts.append(forecast_data)
     
     # 統計情報を計算
@@ -659,6 +664,7 @@ def _create_sample_data() -> pd.DataFrame:
     dates = [us_date.strftime('%Y-%m-%d')] * 4 + [jp_date.strftime('%Y-%m-%d')] * 4
 
     sample_data = {
+
         'symbol': symbols,
         'market': markets,
         'forecast': [round(value, 2) for value in forecast_prices],
@@ -666,6 +672,7 @@ def _create_sample_data() -> pd.DataFrame:
         'confidence': confidences,
         'history': history_placeholder,
         'date': dates,
+
     }
     return pd.DataFrame(sample_data)
 

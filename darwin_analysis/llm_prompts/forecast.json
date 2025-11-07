@@ -1,0 +1,224 @@
+{
+  "timestamp": "2025-11-07T12:58:28.880121",
+  "generation_status": "COMPLETED_WITH_WARNINGS",
+  "next_trading_day": "2025-11-10",
+  "next_trading_day_note": "2025-11-08は営業日ではないため2025-11-10に修正",
+  "symbols_predicted": 8,
+  "total_predictions": 8,
+  "statistics": {
+    "avg_confidence_original": 0.775,
+    "avg_confidence_adjusted": 0.239,
+    "confidence_reduction_reason": "Multiple unrealistic predictions detected"
+  },
+  "forecasts": [
+    {
+      "symbol": "AAPL",
+      "date": "2025-11-10",
+      "forecast": 151.83,
+      "current_price": 269.77,
+      "confidence": {
+        "original": 0.8,
+        "adjusted": 0.0,
+        "adjustment_reason": "Unrealistic price change - likely model error"
+      },
+      "validation": {
+        "is_valid": false,
+        "severity": "error",
+        "price_change_pct": -43.72,
+        "issue": "-43.7% change is unrealistic for single trading day"
+      },
+      "scale_check": {
+        "has_error": false,
+        "suspected_scale_factor": 1.78,
+        "note": "Price scale appears correct"
+      },
+      "market": "US",
+      "historical_context": []
+    },
+    {
+      "symbol": "GOOGL",
+      "date": "2025-11-10",
+      "forecast": 120.45,
+      "current_price": 185.2,
+      "confidence": {
+        "original": 0.75,
+        "adjusted": 0.0,
+        "adjustment_reason": "Unrealistic price change - likely model error"
+      },
+      "validation": {
+        "is_valid": false,
+        "severity": "error",
+        "price_change_pct": -34.96,
+        "issue": "-35.0% change is unrealistic for single trading day"
+      },
+      "scale_check": {
+        "has_error": false,
+        "suspected_scale_factor": 1.54,
+        "note": "Price scale appears correct"
+      },
+      "market": "US",
+      "historical_context": []
+    },
+    {
+      "symbol": "MSFT",
+      "date": "2025-11-10",
+      "forecast": 380.2,
+      "current_price": 452.3,
+      "confidence": {
+        "original": 0.82,
+        "adjusted": 0.41,
+        "adjustment_reason": "Large but possible price change - reduced confidence"
+      },
+      "validation": {
+        "is_valid": true,
+        "severity": "warning",
+        "price_change_pct": -15.94,
+        "issue": "Large change: -15.9% - possible but unusual"
+      },
+      "scale_check": {
+        "has_error": false,
+        "suspected_scale_factor": 1.19,
+        "note": "Price scale appears correct"
+      },
+      "market": "US",
+      "historical_context": []
+    },
+    {
+      "symbol": "TSLA",
+      "date": "2025-11-10",
+      "forecast": 180.5,
+      "current_price": 245.6,
+      "confidence": {
+        "original": 0.78,
+        "adjusted": 0.0,
+        "adjustment_reason": "Unrealistic price change - likely model error"
+      },
+      "validation": {
+        "is_valid": false,
+        "severity": "error",
+        "price_change_pct": -26.51,
+        "issue": "-26.5% change is unrealistic for single trading day"
+      },
+      "scale_check": {
+        "has_error": false,
+        "suspected_scale_factor": 1.36,
+        "note": "Price scale appears correct"
+      },
+      "market": "US",
+      "historical_context": []
+    },
+    {
+      "symbol": "7203",
+      "date": "2025-11-10",
+      "forecast": 2872.33,
+      "current_price": 3139.0,
+      "confidence": {
+        "original": 0.73,
+        "adjusted": 0.73,
+        "adjustment_reason": "Within normal range - confidence maintained"
+      },
+      "validation": {
+        "is_valid": true,
+        "severity": "ok",
+        "price_change_pct": -8.5,
+        "issue": "Moderate change: -8.5%"
+      },
+      "scale_check": {
+        "has_error": false,
+        "suspected_scale_factor": 1.09,
+        "note": "Price scale appears correct"
+      },
+      "market": "JP",
+      "historical_context": []
+    },
+    {
+      "symbol": "6758",
+      "date": "2025-11-10",
+      "forecast": 15194.48,
+      "current_price": 4250.0,
+      "confidence": {
+        "original": 0.85,
+        "adjusted": 0.0,
+        "adjustment_reason": "Scale error detected - data corruption suspected"
+      },
+      "validation": {
+        "is_valid": false,
+        "severity": "error",
+        "price_change_pct": 257.52,
+        "issue": "257.5% change is unrealistic for single trading day"
+      },
+      "scale_check": {
+        "has_error": true,
+        "suspected_scale_factor": 3.58,
+        "note": "3.58x deviation with 257.5% change - scale error suspected"
+      },
+      "market": "JP",
+      "historical_context": []
+    },
+    {
+      "symbol": "8306",
+      "date": "2025-11-10",
+      "forecast": 2453.59,
+      "current_price": 2330.0,
+      "confidence": {
+        "original": 0.77,
+        "adjusted": 0.77,
+        "adjustment_reason": "Within normal range - confidence maintained"
+      },
+      "validation": {
+        "is_valid": true,
+        "severity": "ok",
+        "price_change_pct": 5.3,
+        "issue": "Moderate change: 5.3%"
+      },
+      "scale_check": {
+        "has_error": false,
+        "suspected_scale_factor": 1.05,
+        "note": "Price scale appears correct"
+      },
+      "market": "JP",
+      "historical_context": []
+    },
+    {
+      "symbol": "9984",
+      "date": "2025-11-10",
+      "forecast": 3136.0,
+      "current_price": 23000.0,
+      "confidence": {
+        "original": 0.7,
+        "adjusted": 0.0,
+        "adjustment_reason": "Scale error detected - data corruption suspected"
+      },
+      "validation": {
+        "is_valid": false,
+        "severity": "error",
+        "price_change_pct": -86.37,
+        "issue": "-86.4% change is unrealistic for single trading day"
+      },
+      "scale_check": {
+        "has_error": true,
+        "suspected_scale_factor": 7.33,
+        "note": "7.33x deviation with 86.4% change - scale error suspected"
+      },
+      "market": "JP",
+      "historical_context": []
+    }
+  ],
+  "summary": {
+    "valid_predictions": 2,
+    "warning_predictions": 1,
+    "error_predictions": 5,
+    "recommendation": "Use only 2 valid predictions. 5 predictions contain errors.",
+    "data_quality": "POOR - 5/8 predictions are unrealistic"
+  },
+  "data_issues": [
+    "Trading day detection error for AAPL (2025-11-08 is not a trading day)",
+    "Trading day detection error for GOOGL (2025-11-08 is not a trading day)",
+    "Trading day detection error for MSFT (2025-11-08 is not a trading day)",
+    "Trading day detection error for TSLA (2025-11-08 is not a trading day)",
+    "Trading day detection error for 7203 (2025-11-08 is not a trading day)",
+    "Trading day detection error for 6758 (2025-11-08 is not a trading day)",
+    "Trading day detection error for 8306 (2025-11-08 is not a trading day)",
+    "Trading day detection error for 9984 (2025-11-08 is not a trading day)"
+  ]
+}
