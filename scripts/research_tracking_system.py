@@ -48,25 +48,38 @@ class PredictionResearchTracker:
     
     def calculate_accuracy(self) -> Dict:
         """精度を計算"""
+        # ファイルが存在しない場合は初期化
+        if not self.predictions_file.exists():
+            return {"status": "insufficient_data", "message": "No predictions recorded yet"}
+        
+        if not self.results_file.exists():
+            return {"status": "insufficient_data", "message": "No actual results recorded yet"}
+        
         predictions = []
         with open(self.predictions_file, "r") as f:
             for line in f:
-                predictions.append(json.loads(line))
+                if line.strip():
+                    predictions.append(json.loads(line))
         
         results = {}
         with open(self.results_file, "r") as f:
             for line in f:
-                record = json.loads(line)
-                key = f"{record['symbol']}_{record['prediction_date']}"
-                results[key] = record
+                if line.strip():
+                    record = json.loads(line)
+                    key = f"{record['symbol']}_{record['prediction_date']}"
+                    results[key] = record
+        
+        if not predictions or not results:
+            return {"status": "insufficient_data", "message": "Not enough data for accuracy calculation"}
         
         # 精度指標を計算
         matches = []
         for pred in predictions:
-            pred_date = pred["prediction_date"]
-            for forecast in pred["data"].get("forecasts", []):
-                symbol = forecast["symbol"]
-                predicted_price = forecast["forecast"]
+            pred_date = pred.get("prediction_date")
+            for forecast in pred.get("data", {}).get("forecasts", []):
+                symbol = forecast.get("symbol")
+                predicted_price = forecast.get("forecast")
+                current_price = forecast.get("current_price", predicted_price)
                 key = f"{symbol}_{pred_date}"
                 
                 if key in results:
@@ -79,11 +92,11 @@ class PredictionResearchTracker:
                         "predicted_price": predicted_price,
                         "actual_price": actual_price,
                         "error_pct": error_pct,
-                        "correct_direction": (predicted_price - forecast["current_price"]) * (actual_price - forecast["current_price"]) > 0
+                        "correct_direction": (predicted_price - current_price) * (actual_price - current_price) > 0
                     })
         
         if not matches:
-            return {"status": "insufficient_data", "message": "Not enough data for accuracy calculation"}
+            return {"status": "insufficient_data", "message": "Not enough matched predictions and results"}
         
         df = pd.DataFrame(matches)
         
@@ -157,10 +170,14 @@ class PredictionResearchTracker:
         accuracy = self.calculate_accuracy()
         
         if accuracy.get("status") == "insufficient_data":
-            print("⚠️ Not enough data for export")
+            print(f"⚠️ {accuracy.get('message', 'Not enough data for export')}")
             return None
         
         df = pd.DataFrame(accuracy.get("predictions", []))
+        
+        if df.empty:
+            print("⚠️ No data to export")
+            return None
         
         if format == "csv":
             output_path = self.data_dir / "research_dataset.csv"
