@@ -1,0 +1,128 @@
+name: Research Tracking - Update Accuracy Metrics
+
+on:
+  # 毎営業日 22:00 UTC（日本時間 翌日 07:00）に実行
+  # このときには前営業日の終値が確定している
+  schedule:
+    - cron: "0 22 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  track_accuracy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas numpy yfinance
+
+      - name: Fetch actual prices from yesterday
+        run: |
+          echo "📊 Fetching yesterday's closing prices..."
+          python3 << 'EOF'
+          import yfinance as yf
+          import json
+          from datetime import datetime, timedelta
+          from pathlib import Path
+          
+          # 昨日の日付を取得
+          yesterday = (datetime.now() - timedelta(days=1)).date()
+          
+          symbols = {
+              "AAPL": "AAPL",
+              "GOOGL": "GOOGL",
+              "MSFT": "MSFT",
+              "TSLA": "TSLA",
+              "7203": "7203.T",
+              "6758": "6758.T",
+              "8306": "8306.T",
+              "9984": "9984.T"
+          }
+          
+          for symbol, yf_symbol in symbols.items():
+              try:
+                  stock = yf.Ticker(yf_symbol)
+                  hist = stock.history(start=yesterday, end=yesterday + timedelta(days=1))
+                  if not hist.empty:
+                      close_price = hist["Close"].iloc[-1]
+                      print(f"✅ {symbol}: {close_price:.2f}")
+                  else:
+                      print(f"⚠️ {symbol}: No data for {yesterday}")
+              except Exception as e:
+                  print(f"❌ {symbol}: Error - {e}")
+          EOF
+
+      - name: Run research tracking system
+        run: |
+          echo "📈 Running research tracking system..."
+          PYTHONPATH=. python scripts/research_tracking_system.py
+          echo "✅ Tracking complete"
+
+      - name: Generate research report
+        run: |
+          echo "📄 Generating research report..."
+          python3 << 'EOF'
+          from pathlib import Path
+          from scripts.research_tracking_system import PredictionResearchTracker
+          
+          tracker = PredictionResearchTracker()
+          report = tracker.generate_research_report()
+          
+          # レポート保存
+          report_path = Path("data/research") / f"report_{Path.cwd().name}.md"
+          report_path.write_text(report)
+          
+          print(report)
+          EOF
+
+      - name: Export datasets
+        run: |
+          echo "💾 Exporting research datasets..."
+          python3 << 'EOF'
+          from scripts.research_tracking_system import PredictionResearchTracker
+          
+          tracker = PredictionResearchTracker()
+          tracker.export_dataset("csv")
+          tracker.export_dataset("json")
+          print("✅ Datasets exported")
+          EOF
+
+      - name: Commit research data
+        run: |
+          git config user.email "research@github.com"
+          git config user.name "Research Bot"
+          git add data/research/
+          if ! git diff --staged --quiet; then
+            git commit -m "📊 Research tracking update - $(date +'%Y-%m-%d')"
+            git push origin main
+          else
+            echo "ℹ️ No changes to commit"
+          fi
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Summary
+        run: |
+          echo "## ✅ Research Tracking Complete"
+          echo ""
+          echo "### 📁 Generated Files"
+          ls -lh data/research/ || echo "No files yet"
+          echo ""
+          echo "### 📊 Research Dataset"
+          echo "- CSV: data/research/research_dataset.csv"
+          echo "- JSON: data/research/research_dataset.json"
+          echo "- Report: data/research/report_*.md"
