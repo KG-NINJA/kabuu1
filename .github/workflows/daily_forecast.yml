@@ -2,19 +2,16 @@ name: Daily Forecast & Archive
 
 on:
   schedule:
-    # JST 18:00ごろ（UTC 9:00）
-    - cron: "0 9 * * *"
+    - cron: "0 9 * * *"  # UTC 09:00（日本時間 18:00）
   workflow_dispatch:
 
 permissions:
   contents: write
-  actions: write   # ←これが必須
 
 jobs:
   daily_forecast:
     runs-on: ubuntu-latest
     timeout-minutes: 25
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -70,8 +67,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Trigger retraining workflow
-        uses: benc-uk/workflow-dispatch@v1
-        with:
-          workflow: "Retrain Forecast Model"
-          token: ${{ secrets.PAT_RETRAIN }}
+      - name: Summary
+        run: |
+          echo "## ✅ Daily Forecast Complete"
+          echo ""
+          echo "### 📁 Generated Files"
+          echo "- Forecast CSV: data/predictions_history/"
+          echo "- Summary JSON: data/forecast_summary.json"
+          echo "- Archive: data/archive/"
+          echo ""
+          echo "### 📊 Ready for LLM Analysis"
+          echo "Copy data/forecast_summary.json to any LLM"
