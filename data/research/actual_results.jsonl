@@ -1,0 +1,16 @@
+{"timestamp": "2025-11-10T22:00:00", "symbol": "AAPL", "actual_price": 270.15, "prediction_date": "2025-11-10", "recorded_date": "2025-11-10"}
+{"timestamp": "2025-11-10T22:00:00", "symbol": "GOOGL", "actual_price": 138.92, "prediction_date": "2025-11-10", "recorded_date": "2025-11-10"}
+{"timestamp": "2025-11-10T22:00:00", "symbol": "MSFT", "actual_price": 423.45, "prediction_date": "2025-11-10", "recorded_date": "2025-11-10"}
+{"timestamp": "2025-11-10T22:00:00", "symbol": "TSLA", "actual_price": 249.87, "prediction_date": "2025-11-10", "recorded_date": "2025-11-10"}
+{"timestamp": "2025-11-10T22:00:00", "symbol": "7203", "actual_price": 2301.50, "prediction_date": "2025-11-10", "recorded_date": "2025-11-10"}
+{"timestamp": "2025-11-10T22:00:00", "symbol": "6758", "actual_price": 15650.0, "prediction_date": "2025-11-10", "recorded_date": "2025-11-10"}
+{"timestamp": "2025-11-10T22:00:00", "symbol": "8306", "actual_price": 1812.30, "prediction_date": "2025-11-10", "recorded_date": "2025-11-10"}
+{"timestamp": "2025-11-10T22:00:00", "symbol": "9984", "actual_price": 6720.50, "prediction_date": "2025-11-10", "recorded_date": "2025-11-10"}
+{"timestamp": "2025-11-11T22:00:00", "symbol": "AAPL", "actual_price": 272.30, "prediction_date": "2025-11-11", "recorded_date": "2025-11-11"}
+{"timestamp": "2025-11-11T22:00:00", "symbol": "GOOGL", "actual_price": 140.25, "prediction_date": "2025-11-11", "recorded_date": "2025-11-11"}
+{"timestamp": "2025-11-11T22:00:00", "symbol": "MSFT", "actual_price": 425.60, "prediction_date": "2025-11-11", "recorded_date": "2025-11-11"}
+{"timestamp": "2025-11-11T22:00:00", "symbol": "TSLA", "actual_price": 247.50, "prediction_date": "2025-11-11", "recorded_date": "2025-11-11"}
+{"timestamp": "2025-11-11T22:00:00", "symbol": "7203", "actual_price": 2295.20, "prediction_date": "2025-11-11", "recorded_date": "2025-11-11"}
+{"timestamp": "2025-11-11T22:00:00", "symbol": "6758", "actual_price": 15720.0, "prediction_date": "2025-11-11", "recorded_date": "2025-11-11"}
+{"timestamp": "2025-11-11T22:00:00", "symbol": "8306", "actual_price": 1808.90, "prediction_date": "2025-11-11", "recorded_date": "2025-11-11"}
+{"timestamp": "2025-11-11T22:00:00", "symbol": "9984", "actual_price": 6750.0, "prediction_date": "2025-11-11", "recorded_date": "2025-11-11"}
