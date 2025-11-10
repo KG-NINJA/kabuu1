@@ -1,7 +1,7 @@
 {
-  "timestamp": "2025-11-08T04:16:25.638036",
+  "timestamp": "2025-11-10T10:26:49.918579",
   "generation_status": "COMPLETED",
-  "next_trading_day": "2025-11-10",
+  "next_trading_day": "2025-11-11",
   "next_trading_day_note": null,
   "symbols_predicted": 8,
   "total_predictions": 8,
@@ -13,7 +13,7 @@
   "forecasts": [
     {
       "symbol": "AAPL",
-      "date": "2025-11-10",
+      "date": "2025-11-11",
       "forecast": 195.03,
       "current_price": 192.15,
       "confidence": {
@@ -54,7 +54,7 @@
     },
     {
       "symbol": "GOOGL",
-      "date": "2025-11-10",
+      "date": "2025-11-11",
       "forecast": 137.45,
       "current_price": 135.42,
       "confidence": {
@@ -95,7 +95,7 @@
     },
     {
       "symbol": "MSFT",
-      "date": "2025-11-10",
+      "date": "2025-11-11",
       "forecast": 421.56,
       "current_price": 415.33,
       "confidence": {
@@ -136,7 +136,7 @@
     },
     {
       "symbol": "TSLA",
-      "date": "2025-11-10",
+      "date": "2025-11-11",
       "forecast": 251.99,
       "current_price": 248.27,
       "confidence": {
@@ -177,7 +177,7 @@
     },
     {
       "symbol": "7203",
-      "date": "2025-11-10",
+      "date": "2025-11-11",
       "forecast": 2284.26,
       "current_price": 2250.5,
       "confidence": {
@@ -218,7 +218,7 @@
     },
     {
       "symbol": "6758",
-      "date": "2025-11-10",
+      "date": "2025-11-11",
       "forecast": 15732.5,
       "current_price": 15500.0,
       "confidence": {
@@ -259,7 +259,7 @@
     },
     {
       "symbol": "8306",
-      "date": "2025-11-10",
+      "date": "2025-11-11",
       "forecast": 1806.7,
       "current_price": 1780.0,
       "confidence": {
@@ -300,7 +300,7 @@
     },
     {
       "symbol": "9984",
-      "date": "2025-11-10",
+      "date": "2025-11-11",
       "forecast": 6699.0,
       "current_price": 6600.0,
       "confidence": {
