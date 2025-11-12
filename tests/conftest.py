@@ -12,9 +12,11 @@ REQUIRED_PACKAGES: Tuple[Tuple[str, str], ...] = (
     ("yfinance", "0.2.66"),
     ("holidays", "0.34"),
     ("scikit-learn", "1.5.0"),
+
     ("pandas", "2.3.3"),
     ("schedule", "1.2.1"),
     ("PyYAML", "6.0.2"),
+
 )
 
 

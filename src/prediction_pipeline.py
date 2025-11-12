@@ -196,6 +196,7 @@ class PredictionPipeline:
         self.config = config
 
         # NVDA専用の強化学習ハブを初期化
+
         from .nvda_reinforcement import NvdaReinforcementHub, TARGET_SYMBOL  # type: ignore[import-not-found]
 
         self.target_symbol = str(config.get("nvda.symbol", TARGET_SYMBOL) or TARGET_SYMBOL)
@@ -206,6 +207,7 @@ class PredictionPipeline:
             base_dir=base_dir,
             reward_threshold=reward_threshold,
         )
+
 
         # 出力ディレクトリは NVDA 専用ハブと共有
         self.validation_dir = self.rl_hub.validation_dir
