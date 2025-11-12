@@ -195,10 +195,12 @@ class PredictionPipeline:
         self.config = config
 
         # NVDA専用の強化学習ハブを初期化
+
         from .nvda_reinforcement import NvdaReinforcementHub, TARGET_SYMBOL  # type: ignore[import-not-found]
 
         self.target_symbol = str(config.get("nvda.symbol", TARGET_SYMBOL) or TARGET_SYMBOL)
         self.model = PredictionModel(config, self.target_symbol)
+=
         base_dir = Path(config.get("nvda.base_dir", "nvda_learning"))
         reward_threshold = float(config.get("nvda.reward_threshold", 0.0))
         self.rl_hub = NvdaReinforcementHub(
