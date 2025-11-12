@@ -37,6 +37,10 @@ env/
 # Project specific
 logs/
 *.log
+data/*
+!data/.gitkeep
+!data/**/
+!data/**/.gitkeep
 data/rl_results/
 data/validation_results/
 data/prediction_results/
@@ -75,3 +79,7 @@ pip-delete-this-directory.txt
 .mypy_cache/
 .dmypy.json
 dmypy.json
+darwin_analysis/*
+!darwin_analysis/.gitkeep
+!darwin_analysis/**/
+!darwin_analysis/**/.gitkeep

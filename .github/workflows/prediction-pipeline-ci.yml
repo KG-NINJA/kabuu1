@@ -11,9 +11,6 @@ on:
     - cron: '0 21 * * 1-5'
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 jobs:
   predict_and_validate:
     runs-on: ubuntu-latest
@@ -201,24 +198,6 @@ Only use these for LLM analysis:
           Path('darwin_analysis/QUALITY_REPORT.md').write_text(report)
           print(report)
           "
-
-      - name: Commit results to repository
-        run: |
-          git config user.email "action@github.com"
-          git config user.name "GitHub Action"
-          
-          git add darwin_analysis/ || true
-          
-          # ファイルが変更されたかチェック
-          if ! git diff --staged --quiet; then
-              git commit -m "🧬 Stock prediction analysis - $(date +'%Y-%m-%d %H:%M:%S UTC')" || true
-              git push origin main || echo "Push skipped"
-          else
-              echo "ℹ️ No changes to commit"
-          fi
-        continue-on-error: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifacts
         if: always()
