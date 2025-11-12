@@ -69,6 +69,7 @@ def build_forecast_table(history: pd.DataFrame, days_ahead: int = 1) -> pd.DataF
 
     for (symbol, market), group in grouped:
 
+
         if str(symbol) != TARGET_SYMBOL:
             continue
         if group.empty:
@@ -81,6 +82,7 @@ def build_forecast_table(history: pd.DataFrame, days_ahead: int = 1) -> pd.DataF
         forecast_price = (latest_close * 0.7) + (ma_5 * 0.2) + (ma_20 * 0.1)
 
         confidence = _calculate_confidence(close_series)
+
 
 
         last_trading_day = group["date"].iloc[-1].date()
