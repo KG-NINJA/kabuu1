@@ -4,6 +4,7 @@
 
 ## 🎯 概要
 
+- **予測対象**: NVIDIA (NVDA) に特化した単一銘柄フォーカス
 - **予測モデル**: LSTM + 強化学習による動的最適化
 - **リアルタイム処理**: スケジューラーによる定期実行
 - **自動改善**: モデル性能に基づく自動再学習
@@ -15,6 +16,7 @@
 kabuu1/
 ├── src/                          # メインコード
 │   ├── reinforcement_learning.py # 強化学習モジュール
+│   ├── nvda_reinforcement.py     # NVDA 専用RLオーケストレーター
 │   ├── prediction_pipeline.py    # 予測パイプライン
 │   └── monitor.py                # モニタリング
 ├── tests/                        # テストコード
@@ -22,14 +24,18 @@ kabuu1/
 │   └── test_pipeline.py         # パイプラインテスト
 ├── config/                       # 設定
 │   └── config.yaml              # YAML設定
-├── data/                         # データ出力 (Git無視)
-│   ├── rl_results/
-│   ├── validation_results/
-│   └── prediction_results/
+├── data/                         # 出力は .gitkeep のみを追跡
+│   ├── predictions_history/      # 予測CSVの保存先 (自動生成)
+│   └── research/                 # 研究用データセット (自動生成)
+├── darwin_analysis/              # 解析レポートとLLM用プロンプト (自動生成)
+│   └── llm_prompts/
 ├── logs/                         # ログ出力 (Git無視)
 ├── .github/
 │   └── workflows/
-│       └── ml-pipeline.yml       # GitHub Actions
+│       ├── Research Tracking.yml     # 精度追跡ワークフロー
+│       ├── daily_forecast.yml        # 日次予測とアーカイブ
+│       ├── prediction-pipeline-daemon.yml # 常駐スケジューラを定期起動
+│       └── prediction-pipeline-ci.yml # 予測パイプラインCI
 ├── requirements.txt              # 依存関係
 ├── Dockerfile                    # Docker設定
 ├── .gitignore                    # Git無視ルール
@@ -57,6 +63,10 @@ pytest tests/ -v
 
 # 予測パイプライン実行
 python -m src.prediction_pipeline
+# 45分だけ常駐させる場合
+python -m src.prediction_pipeline --duration-minutes 45 --sleep-seconds 30
+# 単発で予測と実績取り込みを行う場合
+python -m src.prediction_pipeline --mode cycle --run-prediction --run-actuals
 ```
 
 ### Docker での実行
@@ -71,6 +81,13 @@ docker run -v $(pwd)/data:/app/data kabuu1:latest
 # Docker Compose 使用
 docker-compose up -d
 ```
+
+## 🧠 NVDA 専用アーキテクチャ
+
+- `scripts/generate_forecast_csv.py` は NVDA のみを対象にデータを取得
+- `src/nvda_reinforcement.py` が強化学習ログを NVDA 専用ディレクトリへ分離
+- `src/prediction_pipeline.py` は NVDA のスケジュール実行と自動改善を担保
+- LLM プロンプト生成も NVDA の履歴に合わせて最適化
 
 ## 📊 機能一覧
 
@@ -116,6 +133,12 @@ logging:
   file: "logs/prediction_pipeline.log"
 ```
 
+## 📂 生成物とデータ管理
+
+- `data/` と `darwin_analysis/` は自動生成される成果物のみを格納します。
+- リポジトリには空の `.gitkeep` だけを含め、成果物は Git にコミットしません。
+- GitHub Actions では成果物をリポジトリに push せず、ビルドアーティファクトとして保存します。
+
 ## 🧪 テスト
 
 ```bash
@@ -140,11 +163,12 @@ pytest tests/test_rl.py -v
 
 ## 🔄 GitHub Actions ワークフロー
 
-自動実行トリガー：
+以下のワークフローは成果物をアーティファクトとして保存し、リポジトリへ直接 push しません。
 
-- **Push**: main/develop ブランチへの push
-- **Pull Request**: main ブランチへの PR
-- **スケジュール**: 毎日 09:00 UTC、毎週日曜 22:00 UTC
+- **prediction-pipeline-ci.yml**: main ブランチへの push / PR、平日 06:00/21:00 UTC のスケジュールで予測パイプラインを検証します。
+- **daily_forecast.yml**: 毎日 09:00 UTC に実行し、最新予測とアーカイブを生成します。
+- **prediction-pipeline-daemon.yml**: 平日 08:55/16:25 UTC に `PredictionPipeline.run` を45分間自動稼働させ、スケジューラ経由で予測と実績取り込みを実行します。
+- **Research Tracking.yml**: 平日 22:00 UTC に精度メトリクスとレポートを更新します。
 
 ## 📝 ログ出力
 
@@ -242,9 +266,8 @@ MIT License
 
 ```
 例:
-- AAPL の信頼度 80% → 実績：75% 精度 → 次回 75% に調整
-- TSLA の信頼度 78% → 実績：82% 精度 → 次回 82% に調整
-- 信頼度が低い銘柄は学習データ再調整
+- NVDA の信頼度 82% → 実績：78% 精度 → 次回 78% に調整
+- 信頼度が低い場合は NVDA 専用データセットを再収集
 ```
 
 **メリット**:
@@ -292,15 +315,15 @@ MIT License
 **提案**: グループ化して相関分析を追加
 
 ```
-グループ化:
-- Tech セクター: AAPL, GOOGL, MSFT, TSLA
-- 日本大型株: 6758 (Sony), 7203 (Toyota), 8306 (MUFG)
-- ソフトウェア: 9984 (SoftBank)
+NVDA の周辺指標:
+- GPU 受注動向 / データセンター指数
+- 米国半導体 ETF (SOXX) との連動性
+- 競合企業の決算スケジュール
 
 分析:
-- グループ内の相関性
-- 業界トレンドの予測
-- 分散投資ポートフォリオ提案
+- 指標乖離が NVDA の短期価格に与える影響
+- 相関変化を強化学習の報酬に反映
+- リスクイベント前後のボラティリティ監視
 ```
 
 ---
@@ -379,9 +402,9 @@ LLM による分析:
 - ユーザーフレンドリーなレポート生成
 
 実装例:
-"AAPL は過去 5 日間の上昇トレンド継続予測。
-Apple Watch の新製品発表が下支え要因。
-ただし金利上昇リスクに要注意。"
+"NVDA は過去 5 日間の上昇トレンド継続予測。
+AI サーバー需要と GPU 供給網のニュースが追い風。
+ただし米金利上昇と為替変動リスクに要注意。"
 ```
 
 ---
@@ -498,9 +521,8 @@ React コンポーネント: PredictionAnalytics.jsx
 
 ```
 例:
-- AAPL の信頼度 80% → 実績：75% 精度 → 次回 75% に調整
-- TSLA の信頼度 78% → 実績：82% 精度 → 次回 82% に調整
-- 信頼度が低い銘柄は学習データ再調整
+- NVDA の信頼度 82% → 実績：78% 精度 → 次回 78% に調整
+- 信頼度が低い場合は NVDA 専用データセットを再収集
 ```
 
 **メリット**:
@@ -518,7 +540,7 @@ React コンポーネント: PredictionAnalytics.jsx
 トリガー例:
 - 信頼度 85% 以上かつアップサイド 3% 以上
 - 信頼度 80% 以上かつダウンサイド 3% 以上
-- 複数銘柄の同時トレンド（セクター分析）
+- SOXX 指数など関連ベンチマークとの乖離
 - 前日比で予測が大きく変わった
 ```
 
@@ -548,15 +570,15 @@ React コンポーネント: PredictionAnalytics.jsx
 **提案**: グループ化して相関分析を追加
 
 ```
-グループ化:
-- Tech セクター: AAPL, GOOGL, MSFT, TSLA
-- 日本大型株: 6758 (Sony), 7203 (Toyota), 8306 (MUFG)
-- ソフトウェア: 9984 (SoftBank)
+NVDA の周辺指標:
+- GPU 受注動向 / データセンター指数
+- 米国半導体 ETF (SOXX) との連動性
+- 競合企業の決算スケジュール
 
 分析:
-- グループ内の相関性
-- 業界トレンドの予測
-- 分散投資ポートフォリオ提案
+- 指標乖離が NVDA の短期価格に与える影響
+- 相関変化を強化学習の報酬に反映
+- リスクイベント前後のボラティリティ監視
 ```
 
 ---
@@ -635,9 +657,9 @@ LLM による分析:
 - ユーザーフレンドリーなレポート生成
 
 実装例:
-"AAPL は過去 5 日間の上昇トレンド継続予測。
-Apple Watch の新製品発表が下支え要因。
-ただし金利上昇リスクに要注意。"
+"NVDA は過去 5 日間の上昇トレンド継続予測。
+AI サーバー需要と GPU 供給網のニュースが追い風。
+ただし米金利上昇と為替変動リスクに要注意。"
 ```
 
 ---

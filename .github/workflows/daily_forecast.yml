@@ -5,9 +5,6 @@ on:
     - cron: "0 9 * * *"  # UTC 09:00（日本時間 18:00）
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 jobs:
   daily_forecast:
     runs-on: ubuntu-latest
@@ -52,21 +49,6 @@ jobs:
             --archive-dir data/archive
           echo "✅ Archive complete."
 
-      - name: Commit and push results
-        run: |
-          git config user.email "action@github.com"
-          git config user.name "GitHub Action"
-          git add data/
-          if ! git diff --staged --quiet; then
-            git commit -m "📦 Auto archive and forecast update $(date +'%Y-%m-%d %H:%M:%S UTC')"
-            git push origin main
-          else
-            echo "ℹ️ No changes to commit"
-          fi
-        continue-on-error: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Summary
         run: |
           echo "## ✅ Daily Forecast Complete"
@@ -78,3 +60,15 @@ jobs:
           echo ""
           echo "### 📊 Ready for LLM Analysis"
           echo "Copy data/forecast_summary.json to any LLM"
+
+      - name: Upload forecast artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-forecast-${{ github.run_id }}
+          path: |
+            data/predictions_history
+            data/forecast_summary.json
+            data/archive
+          if-no-files-found: warn
+          retention-days: 14
