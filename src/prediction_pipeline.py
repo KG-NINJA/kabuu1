@@ -3,25 +3,33 @@
 強化学習との連携やスケジューリングを統合
 """
 
+import argparse
 import json
 import logging
 import logging.handlers
 import sys
 import time
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import schedule
 import yaml  # type: ignore[import-untyped]
 
+import pandas as pd
+from sklearn.linear_model import LinearRegression
+
 # プロジェクトルートをパスに追加（強化学習モジュールを参照するため）
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config" / "config.yaml"
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
 # ログ対象ライブラリの静音化を後段で実施
+
+
+from .data_fetcher import fetch_stock_data
 
 
 def setup_logging(config: dict) -> None:
@@ -53,16 +61,25 @@ def setup_logging(config: dict) -> None:
 class Config:
     """YAMLベースの設定管理クラス"""
 
-    def __init__(self, config_path: Optional[str] = None) -> None:
-        # デフォルトの設定ファイルパスをスクリプト配置ディレクトリ基準に設定
-        self.config_path: Path
-        if config_path is None:
-            # スクリプトの配置ディレクトリを基準に config.yaml を探す
-            self.config_path = Path(__file__).resolve().parent / "config.yaml"
-        else:
-            self.config_path = Path(config_path)
+    def __init__(self, config_path: Optional[Union[str, Path]] = None) -> None:
+        # デフォルトの設定ファイルパスをリポジトリルート基準で解決
+        self.config_path = self._resolve_config_path(config_path)
         self._config: Dict[str, Any] = {}
         self.load()
+
+    @staticmethod
+    def _resolve_config_path(
+        config_path: Optional[Union[str, Path]]
+    ) -> Path:
+        """設定ファイルの場所を解決する"""
+
+        if config_path is None:
+            return DEFAULT_CONFIG_PATH
+
+        candidate = Path(config_path)
+        if not candidate.is_absolute():
+            candidate = PROJECT_ROOT / candidate
+        return candidate
 
     def load(self) -> None:
         """設定ファイルを読み込む（存在しない場合は空設定）"""
@@ -92,38 +109,104 @@ class Config:
 
 
 class PredictionModel:
-    """予測モデルのダミー実装（本番では差し替え予定）"""
+    """NVDA 専用の線形回帰モデルを管理するクラス"""
 
-    def __init__(self, config: Config) -> None:
+    feature_columns = ["close", "ma_5", "ma_20", "return_1d", "volatility_5d"]
+
+    def __init__(self, config: Config, target_symbol: str) -> None:
         self.config = config
-        self.model = self._build_model()
+        self.target_symbol = target_symbol
+        self.lookback_days = int(self.config.get("model.lookback_days", 365))
+        self.regressor = LinearRegression()
+        self._is_trained = False
+        self.last_trained_at: Optional[str] = None
+        self.retrain(lookback_days=self.lookback_days)
 
-    def _build_model(self) -> Dict[str, Any]:
-        """モデルの構築（ここでは仮実装）"""
-        logging.info("ダミー予測モデルを構築しました")
-        return {"model": "sample_model"}
+    def _prepare_training_frame(self, history: pd.DataFrame) -> pd.DataFrame:
+        augmented = self._augment_with_features(history)
+        augmented["target"] = augmented["close"].shift(-1)
+        augmented = augmented.dropna(subset=self.feature_columns + ["target"])
+        return augmented
+
+    @staticmethod
+    def _augment_with_features(history: pd.DataFrame) -> pd.DataFrame:
+        frame = history.copy()
+        frame["date"] = pd.to_datetime(frame["date"])
+        frame.sort_values("date", inplace=True)
+
+        # GitHub Actions 上で `close` 列が DataFrame や配列になり TypeError が
+        # 発生したため、あらゆるケースに対応して 1 次元の Series として
+        # 正規化してから数値変換を行う。これにより学習データが欠損しても
+        # 無視され、スタブではなく実データでも安定する。
+        raw_close = frame.get("close")
+        if isinstance(raw_close, pd.DataFrame):
+            raw_close = raw_close.iloc[:, 0]
+        elif not isinstance(raw_close, pd.Series):
+            raw_close = pd.Series(raw_close, index=frame.index)
+
+        frame.loc[:, "close"] = pd.to_numeric(raw_close, errors="coerce")
+        frame["ma_5"] = frame["close"].rolling(window=5, min_periods=5).mean()
+        frame["ma_20"] = frame["close"].rolling(window=20, min_periods=20).mean()
+        frame["return_1d"] = frame["close"].pct_change()
+        frame["volatility_5d"] = (
+            frame["return_1d"].rolling(window=5, min_periods=5).std().fillna(0.0)
+        )
+        return frame
 
     def predict(self, features: Dict[str, Any]) -> float:
-        """特徴量から予測値を生成（デモとして固定値を返す）"""
+        """学習済みモデルから終値を予測する"""
+
         logging.debug(f"入力特徴量: {features}")
-        return 100.0
+        if not self._is_trained:
+            logging.warning("モデルが未学習のため終値を直接返します")
+            return float(features.get("close", 0.0))
+
+        vector = [[float(features[column]) for column in self.feature_columns]]
+        prediction = float(self.regressor.predict(vector)[0])
+        logging.debug(f"線形回帰モデルによる予測値: {prediction}")
+        return prediction
 
     def get_params(self) -> Dict[str, Any]:
         """現在のハイパーパラメータを返却"""
+
         return {
             "learning_rate": self.config.get("model.learning_rate", 0.001),
             "hidden_units": self.config.get("model.hidden_units", 128),
             "batch_size": self.config.get("model.batch_size", 32),
             "epochs": self.config.get("model.epochs", 10),
+            "trained_at": self.last_trained_at,
         }
 
     def adjust_learning_rate(self, new_lr: float) -> None:
-        """学習率を更新（本実装ではログのみ）"""
+        """学習率を更新（ロギングのみ）"""
+
         logging.info(f"学習率を {new_lr} に変更します")
 
     def retrain(self, lookback_days: int = 365) -> None:
-        """再学習処理の呼び出し（データ取得等は今後実装）"""
-        logging.info(f"モデルを再学習します（直近 {lookback_days} 日のデータを想定）")
+        """直近データで線形回帰モデルを再学習"""
+
+        logging.info(f"NVDA の過去 {lookback_days} 日データで再学習を実行します")
+        history = fetch_stock_data(
+            us_symbols=[self.target_symbol],
+            jp_symbols=[],
+            lookback_days=lookback_days,
+        )
+        history = history[history["symbol"] == self.target_symbol]
+
+        if history.empty:
+            logging.error("学習用データが取得できなかったため再学習をスキップします")
+            self._is_trained = False
+            return
+
+        training_frame = self._prepare_training_frame(history)
+        if training_frame.empty:
+            logging.error("特徴量が不足しているためモデルの学習に失敗しました")
+            self._is_trained = False
+            return
+
+        self.regressor.fit(training_frame[self.feature_columns], training_frame["target"])
+        self._is_trained = True
+        self.last_trained_at = datetime.now(UTC).isoformat()
         logging.info("再学習が完了しました")
 
 
@@ -132,25 +215,22 @@ class PredictionPipeline:
 
     def __init__(self, config: Config) -> None:
         self.config = config
-        self.model = PredictionModel(config)
 
-        # 強化学習パイプライン（既存モジュール）を初期化
-        from reinforcement_learning import (
-            ReinforcementLearningPipeline,
-        )  # 遅延インポートで循環回避
+        # NVDA専用の強化学習ハブを初期化
+        from .nvda_reinforcement import NvdaReinforcementHub, TARGET_SYMBOL  # type: ignore[import-not-found]
 
-        self.rl_pipeline = ReinforcementLearningPipeline(
-            validation_dir=config.get("rl.validation_dir", "validation_results"),
-            prediction_dir=config.get("rl.prediction_dir", "prediction_results"),
+        self.target_symbol = str(config.get("nvda.symbol", TARGET_SYMBOL) or TARGET_SYMBOL)
+        self.model = PredictionModel(config, self.target_symbol)
+        base_dir = Path(config.get("nvda.base_dir", "nvda_learning"))
+        reward_threshold = float(config.get("nvda.reward_threshold", 0.0))
+        self.rl_hub = NvdaReinforcementHub(
+            base_dir=base_dir,
+            reward_threshold=reward_threshold,
         )
 
-        # 出力ディレクトリを作成
-        self.validation_dir = Path(
-            config.get("rl.validation_dir", "validation_results")
-        )
-        self.prediction_dir = Path(
-            config.get("rl.prediction_dir", "prediction_results")
-        )
+        # 出力ディレクトリは NVDA 専用ハブと共有
+        self.validation_dir = self.rl_hub.validation_dir
+        self.prediction_dir = self.rl_hub.prediction_dir
         self.metrics_path = Path("performance_metrics.json")
         self.pending_path = self.prediction_dir / "pending_predictions.json"
 
@@ -247,7 +327,7 @@ class PredictionPipeline:
                     record["actual_timestamp"] = datetime.now().isoformat()
 
                     predicted_price = record["predicted_price"]
-                    reward = self.rl_pipeline.record_prediction_result(
+                    reward = self.rl_hub.record_outcome(
                         ticker=ticker,
                         predicted_price=predicted_price,
                         actual_price=actual_price,
@@ -281,7 +361,7 @@ class PredictionPipeline:
     def check_model_improvement(self) -> None:
         """強化学習の指標に基づき改善が必要か判定"""
         try:
-            improvement_needed, strategy = self.rl_pipeline.should_improve_model()
+            improvement_needed, strategy = self.rl_hub.should_improve()
             if improvement_needed:
                 logging.info(f"モデル改善が必要と判断: {strategy}")
                 self.retrain_model(strategy)
@@ -314,6 +394,9 @@ class PredictionPipeline:
             self.weekly_model_review
         )
 
+        actual_price_time = self.config.get("schedule.actual_price_time", "16:30")
+        schedule.every().day.at(actual_price_time).do(self.collect_actual_price)
+
         logging.info("スケジューラーを設定しました")
 
     def predict_all_tickers(self) -> None:
@@ -327,10 +410,27 @@ class PredictionPipeline:
         except Exception as exc:
             logging.error(f"一括予測中にエラー: {exc}", exc_info=True)
 
+    def collect_actual_price(self) -> None:
+        """NVDA の直近実績終値を取得し pending 予測を確定する"""
+
+        try:
+            latest = self._fetch_latest_close(self.target_symbol)
+            if latest is None:
+                logging.warning("実績株価が取得できなかったため更新をスキップします")
+                return
+
+            actual_price, actual_date = latest
+            logging.info(
+                f"{self.target_symbol} の実績終値 {actual_price:.2f} ({actual_date}) を反映します"
+            )
+            self.update_with_actual_price(self.target_symbol, actual_price)
+        except Exception as exc:
+            logging.error(f"実績株価の収集中にエラー: {exc}", exc_info=True)
+
     def weekly_model_review(self) -> None:
         """週次レビューで学習状況を確認"""
         try:
-            insights = self.rl_pipeline.get_learning_insights()
+            insights = self.rl_hub.get_learning_insights()
             logging.info("週次レビューレポート")
             for key, value in insights.items():
                 logging.info(f"- {key}: {value}")
@@ -348,40 +448,184 @@ class PredictionPipeline:
     # -------------------- プレースホルダーメソッド --------------------
     def get_tracking_tickers(self) -> List[str]:
         """監視対象の銘柄一覧（暫定実装）"""
-        return ["9984.T", "6758.T", "7203.T"]
+        return [str(self.target_symbol)]
 
     def prepare_features(self, ticker: str) -> Dict[str, Any]:
-        """特徴量を生成（データ取得ロジックは別途実装予定）"""
-        logging.debug(f"{ticker} の特徴量を生成します")
-        return {
-            "open": 100.0,
-            "high": 105.0,
-            "low": 95.0,
-            "close": 102.0,
-            "volume": 1_000_000,
-        }
+        """NVDA の株価履歴から特徴量を生成"""
+
+        lookback_days = int(self.config.get("features.lookback_days", 90))
+        logging.debug(f"{ticker} の特徴量を生成します (lookback={lookback_days})")
+        history = fetch_stock_data(
+            us_symbols=[ticker],
+            jp_symbols=[],
+            lookback_days=max(lookback_days, 30),
+        )
+        history = history[history["symbol"] == ticker]
+
+        if history.empty:
+            raise ValueError(f"{ticker} の履歴データが取得できませんでした")
+
+        augmented = self.model._augment_with_features(history)
+        prepared = augmented.dropna(subset=self.model.feature_columns)
+        if prepared.empty:
+            raise ValueError("十分な履歴データがなく特徴量を生成できませんでした")
+        latest = prepared.iloc[-1]
+
+        feature_dict = {column: float(latest[column]) for column in self.model.feature_columns}
+        feature_dict.update(
+            {
+                "as_of": str(latest["date"]).split("T")[0],
+                "volume": float(latest.get("volume", 0.0)),
+            }
+        )
+        logging.debug(f"{ticker} の特徴量: {feature_dict}")
+        return feature_dict
+
+    def _fetch_latest_close(self, ticker: str) -> Optional[tuple[float, str]]:
+        """直近の終値と日付を取得する"""
+
+        end_date = datetime.now(UTC).date()
+        start_date = end_date - timedelta(days=10)
+        history = fetch_stock_data(
+            us_symbols=[ticker],
+            jp_symbols=[],
+            start_date=start_date,
+            end_date=end_date,
+            lookback_days=(end_date - start_date).days,
+        )
+        history = history[history["symbol"] == ticker]
+        if history.empty:
+            return None
+
+        history = history.sort_values("date")
+        latest_row = history.iloc[-1]
+        return float(latest_row["close"]), str(latest_row["date"]).split("T")[0]
 
     # -------------------- エントリーポイント --------------------
-    def run(self) -> None:
-        """常駐プロセスとしてスケジューラを実行"""
+    def run(
+        self,
+        duration_minutes: Optional[float] = None,
+        sleep_seconds: float = 60.0,
+    ) -> None:
+        """スケジューラを実行し、任意で稼働時間を制限"""
+
         logging.info("予測パイプラインを起動しました")
+        max_sleep = max(sleep_seconds, 0.1)
+        start_time = time.monotonic()
         try:
             while True:
                 schedule.run_pending()
-                time.sleep(60)
+
+                if duration_minutes is not None:
+                    elapsed_minutes = (time.monotonic() - start_time) / 60.0
+                    if elapsed_minutes >= duration_minutes:
+                        logging.info(
+                            "指定された稼働時間 %.2f 分に達したためスケジューラを終了します",
+                            duration_minutes,
+                        )
+                        break
+
+                time.sleep(max_sleep)
         except KeyboardInterrupt:
             logging.info("ユーザー操作によりパイプラインを終了します")
         except Exception as exc:
             logging.error(f"パイプライン実行中にエラー: {exc}", exc_info=True)
             raise
 
+    def run_cycle(
+        self,
+        *,
+        run_prediction: bool = True,
+        run_actuals: bool = True,
+        run_review: bool = False,
+    ) -> None:
+        """単発実行で必要な処理のみを順次実行"""
+
+        logging.info(
+            "単発サイクル実行を開始します (prediction=%s, actuals=%s, review=%s)",
+            run_prediction,
+            run_actuals,
+            run_review,
+        )
+        if run_prediction:
+            self.predict_all_tickers()
+        if run_actuals:
+            self.collect_actual_price()
+        if run_review:
+            self.weekly_model_review()
+        logging.info("単発サイクル実行が完了しました")
+
 
 def main() -> None:
     """スクリプト起動時のメイン処理"""
-    config = Config()
+
+    parser = argparse.ArgumentParser(
+        description="NVDA 予測パイプラインの実行モードを制御します"
+    )
+    parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="設定ファイルのパス。未指定の場合は config/config.yaml を使用",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["daemon", "cycle"],
+        default="daemon",
+        help="daemon: 常駐監視 / cycle: 単発処理",
+    )
+    parser.add_argument(
+        "--duration-minutes",
+        type=float,
+        default=None,
+        help="daemon モードで稼働させる分数。未指定なら無期限",
+    )
+    parser.add_argument(
+        "--sleep-seconds",
+        type=float,
+        default=60.0,
+        help="スケジューラの待機間隔 (秒)",
+    )
+    parser.add_argument(
+        "--run-prediction",
+        action="store_true",
+        help="cycle モードで予測を実行",
+    )
+    parser.add_argument(
+        "--run-actuals",
+        action="store_true",
+        help="cycle モードで実績取り込みを実行",
+    )
+    parser.add_argument(
+        "--run-review",
+        action="store_true",
+        help="cycle モードで週次レビューを実行",
+    )
+
+    args = parser.parse_args()
+
+    config = Config(args.config)
     setup_logging(config._config)
     pipeline = PredictionPipeline(config)
-    pipeline.run()
+
+    if args.mode == "daemon":
+        pipeline.run(
+            duration_minutes=args.duration_minutes,
+            sleep_seconds=max(args.sleep_seconds, 0.1),
+        )
+    else:
+        run_prediction = args.run_prediction
+        run_actuals = args.run_actuals
+        run_review = args.run_review
+        if not any([run_prediction, run_actuals, run_review]):
+            run_prediction = True
+            run_actuals = True
+
+        pipeline.run_cycle(
+            run_prediction=run_prediction,
+            run_actuals=run_actuals,
+            run_review=run_review,
+        )
 
 
 if __name__ == "__main__":
