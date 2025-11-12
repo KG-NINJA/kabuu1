@@ -9,8 +9,8 @@ from typing import List, Optional
 
 import pandas as pd
 
-from data_fetcher import fetch_stock_data  # type: ignore
-from predict import (
+from src.data_fetcher import fetch_stock_data
+from src.predict import (
     generate_llm_prompts,
     prepare_forecast_dataframe,
     save_json_output,
@@ -20,12 +20,15 @@ from predict import (
 )
 
 
+TARGET_SYMBOL = "NVDA"
+
+
 def _default_symbols() -> List[str]:
-    return ["AAPL", "GOOGL", "MSFT", "TSLA"]
+    return [TARGET_SYMBOL]
 
 
 def _default_jp_symbols() -> List[str]:
-    return ["9984", "6758", "7203", "8306"]
+    return []
 
 
 def build_argument_parser() -> argparse.ArgumentParser:

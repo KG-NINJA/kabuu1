@@ -134,23 +134,20 @@ class PredictionPipeline:
         self.config = config
         self.model = PredictionModel(config)
 
-        # 強化学習パイプライン（既存モジュール）を初期化
-        from reinforcement_learning import (
-            ReinforcementLearningPipeline,
-        )  # 遅延インポートで循環回避
+        # NVDA専用の強化学習ハブを初期化
+        from nvda_reinforcement import NvdaReinforcementHub, TARGET_SYMBOL  # type: ignore[import-not-found]
 
-        self.rl_pipeline = ReinforcementLearningPipeline(
-            validation_dir=config.get("rl.validation_dir", "validation_results"),
-            prediction_dir=config.get("rl.prediction_dir", "prediction_results"),
+        self.target_symbol = str(config.get("nvda.symbol", TARGET_SYMBOL) or TARGET_SYMBOL)
+        base_dir = Path(config.get("nvda.base_dir", "nvda_learning"))
+        reward_threshold = float(config.get("nvda.reward_threshold", 0.0))
+        self.rl_hub = NvdaReinforcementHub(
+            base_dir=base_dir,
+            reward_threshold=reward_threshold,
         )
 
-        # 出力ディレクトリを作成
-        self.validation_dir = Path(
-            config.get("rl.validation_dir", "validation_results")
-        )
-        self.prediction_dir = Path(
-            config.get("rl.prediction_dir", "prediction_results")
-        )
+        # 出力ディレクトリは NVDA 専用ハブと共有
+        self.validation_dir = self.rl_hub.validation_dir
+        self.prediction_dir = self.rl_hub.prediction_dir
         self.metrics_path = Path("performance_metrics.json")
         self.pending_path = self.prediction_dir / "pending_predictions.json"
 
@@ -247,7 +244,7 @@ class PredictionPipeline:
                     record["actual_timestamp"] = datetime.now().isoformat()
 
                     predicted_price = record["predicted_price"]
-                    reward = self.rl_pipeline.record_prediction_result(
+                    reward = self.rl_hub.record_outcome(
                         ticker=ticker,
                         predicted_price=predicted_price,
                         actual_price=actual_price,
@@ -281,7 +278,7 @@ class PredictionPipeline:
     def check_model_improvement(self) -> None:
         """強化学習の指標に基づき改善が必要か判定"""
         try:
-            improvement_needed, strategy = self.rl_pipeline.should_improve_model()
+            improvement_needed, strategy = self.rl_hub.should_improve()
             if improvement_needed:
                 logging.info(f"モデル改善が必要と判断: {strategy}")
                 self.retrain_model(strategy)
@@ -330,7 +327,7 @@ class PredictionPipeline:
     def weekly_model_review(self) -> None:
         """週次レビューで学習状況を確認"""
         try:
-            insights = self.rl_pipeline.get_learning_insights()
+            insights = self.rl_hub.get_learning_insights()
             logging.info("週次レビューレポート")
             for key, value in insights.items():
                 logging.info(f"- {key}: {value}")
@@ -348,7 +345,7 @@ class PredictionPipeline:
     # -------------------- プレースホルダーメソッド --------------------
     def get_tracking_tickers(self) -> List[str]:
         """監視対象の銘柄一覧（暫定実装）"""
-        return ["9984.T", "6758.T", "7203.T"]
+        return [str(self.target_symbol)]
 
     def prepare_features(self, ticker: str) -> Dict[str, Any]:
         """特徴量を生成（データ取得ロジックは別途実装予定）"""
