@@ -9,8 +9,8 @@ from typing import List, Optional
 
 import pandas as pd
 
-from data_fetcher import fetch_stock_data  # type: ignore
-from predict import (
+from src.data_fetcher import fetch_stock_data
+from src.predict import (
     generate_llm_prompts,
     prepare_forecast_dataframe,
     save_json_output,

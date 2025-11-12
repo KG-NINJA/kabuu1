@@ -22,14 +22,17 @@ kabuu1/
 │   └── test_pipeline.py         # パイプラインテスト
 ├── config/                       # 設定
 │   └── config.yaml              # YAML設定
-├── data/                         # データ出力 (Git無視)
-│   ├── rl_results/
-│   ├── validation_results/
-│   └── prediction_results/
+├── data/                         # 出力は .gitkeep のみを追跡
+│   ├── predictions_history/      # 予測CSVの保存先 (自動生成)
+│   └── research/                 # 研究用データセット (自動生成)
+├── darwin_analysis/              # 解析レポートとLLM用プロンプト (自動生成)
+│   └── llm_prompts/
 ├── logs/                         # ログ出力 (Git無視)
 ├── .github/
 │   └── workflows/
-│       └── ml-pipeline.yml       # GitHub Actions
+│       ├── Research Tracking.yml     # 精度追跡ワークフロー
+│       ├── daily_forecast.yml        # 日次予測とアーカイブ
+│       └── prediction-pipeline-ci.yml # 予測パイプラインCI
 ├── requirements.txt              # 依存関係
 ├── Dockerfile                    # Docker設定
 ├── .gitignore                    # Git無視ルール
@@ -116,6 +119,12 @@ logging:
   file: "logs/prediction_pipeline.log"
 ```
 
+## 📂 生成物とデータ管理
+
+- `data/` と `darwin_analysis/` は自動生成される成果物のみを格納します。
+- リポジトリには空の `.gitkeep` だけを含め、成果物は Git にコミットしません。
+- GitHub Actions では成果物をリポジトリに push せず、ビルドアーティファクトとして保存します。
+
 ## 🧪 テスト
 
 ```bash
@@ -140,11 +149,11 @@ pytest tests/test_rl.py -v
 
 ## 🔄 GitHub Actions ワークフロー
 
-自動実行トリガー：
+以下のワークフローは成果物をアーティファクトとして保存し、リポジトリへ直接 push しません。
 
-- **Push**: main/develop ブランチへの push
-- **Pull Request**: main ブランチへの PR
-- **スケジュール**: 毎日 09:00 UTC、毎週日曜 22:00 UTC
+- **prediction-pipeline-ci.yml**: main ブランチへの push / PR、平日 06:00/21:00 UTC のスケジュールで予測パイプラインを検証します。
+- **daily_forecast.yml**: 毎日 09:00 UTC に実行し、最新予測とアーカイブを生成します。
+- **Research Tracking.yml**: 平日 22:00 UTC に精度メトリクスとレポートを更新します。
 
 ## 📝 ログ出力
 

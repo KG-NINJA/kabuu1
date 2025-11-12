@@ -6,8 +6,6 @@
 import json
 import logging
 import math
-import os
-import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -16,62 +14,16 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
-# 親ディレクトリをパスに追加（CI環境でも動作するように）
-current_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(current_dir)
-if parent_dir not in sys.path:
-    sys.path.insert(0, parent_dir)
-
-# インポート（相対パスと絶対パスの両方に対応）
-try:
-    from src.data_fetcher import fetch_stock_data
-except ImportError:
-    try:
-        from data_fetcher import fetch_stock_data  # type: ignore
-    except ImportError:
-        fetch_stock_data = None  # type: ignore
-
-try:
-
-        from src.validation_helpers import (
-            is_trading_day,
-            get_next_trading_day,
-            validate_price_prediction,
-            detect_scale_error,
-            enforce_price_ratio_limits,
-            validate_history_bounds,
-            recalculate_confidence
-        )
-
-except ImportError as e:
-    # 相対インポートを試す
-    try:
-        from validation_helpers import (
-            is_trading_day,
-            get_next_trading_day,
-            validate_price_prediction,
-            detect_scale_error,
-            enforce_price_ratio_limits,
-            validate_history_bounds,
-            recalculate_confidence
-        )
-    except ImportError:
-        # 最後の手段：直接パスからインポート
-        import importlib.util
-        validation_helpers_path = os.path.join(current_dir, 'validation_helpers.py')
-        if os.path.exists(validation_helpers_path):
-            spec = importlib.util.spec_from_file_location("validation_helpers", validation_helpers_path)
-            validation_helpers = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(validation_helpers)
-            is_trading_day = validation_helpers.is_trading_day
-            get_next_trading_day = validation_helpers.get_next_trading_day
-            validate_price_prediction = validation_helpers.validate_price_prediction
-            detect_scale_error = validation_helpers.detect_scale_error
-            enforce_price_ratio_limits = validation_helpers.enforce_price_ratio_limits
-            validate_history_bounds = validation_helpers.validate_history_bounds
-            recalculate_confidence = validation_helpers.recalculate_confidence
-        else:
-            raise ImportError(f"validation_helpers.py not found. Error: {e}")
+from src.data_fetcher import fetch_stock_data
+from src.validation_helpers import (
+    detect_scale_error,
+    enforce_price_ratio_limits,
+    get_next_trading_day,
+    is_trading_day,
+    recalculate_confidence,
+    validate_history_bounds,
+    validate_price_prediction,
+)
 
 
 def determine_market(symbol: str) -> str:
@@ -730,17 +682,13 @@ def main():
         forecast_df = pd.read_csv(args.csv)
     else:
         logging.info("Fetching historical data for prediction")
-        if fetch_stock_data is None:
-            logging.warning("fetch_stock_data is unavailable, using sample data")
-            history_df = pd.DataFrame()
-        else:
-            history_df = fetch_stock_data(
-                us_symbols=args.us_symbols,
-                jp_symbols=args.jp_symbols,
-                start_date=_parse_optional_date(args.start_date),
-                end_date=_parse_optional_date(args.end_date),
-                lookback_days=args.lookback_days,
-            )
+        history_df = fetch_stock_data(
+            us_symbols=args.us_symbols,
+            jp_symbols=args.jp_symbols,
+            start_date=_parse_optional_date(args.start_date),
+            end_date=_parse_optional_date(args.end_date),
+            lookback_days=args.lookback_days,
+        )
 
         if args.raw_output and 'history_df' in locals() and not history_df.empty:
             raw_path = Path(args.raw_output)

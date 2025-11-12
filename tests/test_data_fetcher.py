@@ -1,42 +1,74 @@
-# tests/test_data_fetcher.py
-import pandas as pd
+"""Unit tests for the :mod:`src.data_fetcher` module."""
+
+from datetime import date
 from unittest.mock import patch
-import sys
 
-sys.path.insert(0, "src")
+import pandas as pd
+
+from src import data_fetcher
 
 
-class TestDataFetcher:
-    """株価データ取得のテスト"""
+def _mock_history() -> pd.DataFrame:
+    dates = pd.date_range("2024-01-01", periods=3)
+    return pd.DataFrame(
+        {
+            "Date": dates,
+            "Open": [1.0, 1.1, 1.2],
+            "High": [1.2, 1.3, 1.4],
+            "Low": [0.9, 1.0, 1.1],
+            "Close": [1.05, 1.15, 1.25],
+            "Adj Close": [1.05, 1.15, 1.25],
+            "Volume": [100, 110, 120],
+        }
+    )
 
-    def test_data_structure(self):
-        """データフレームの構造をテスト"""
-        data = pd.DataFrame(
-            {
-                "Close": [150.0, 151.0, 152.0],
-                "High": [151.0, 152.0, 153.0],
-                "Low": [149.0, 150.0, 151.0],
-                "Volume": [1000000, 1100000, 1200000],
-            }
-        )
-        assert len(data) == 3
-        assert all(col in data.columns for col in ["Close", "High", "Low", "Volume"])
 
-    @patch("yfinance.download")
-    def test_us_stock_fetch_mock(self, mock_download):
-        """US株の取得をモックでテスト"""
-        mock_data = pd.DataFrame(
-            {"Close": [150.0, 151.0], "Volume": [1000000, 1100000]}
-        )
-        mock_download.return_value = mock_data
-        assert mock_download.return_value is not None
-        assert len(mock_download.return_value) == 2
+def test_resolve_symbol_adds_suffix_for_jp():
+    """JP市場では自動的に ``.T`` サフィックスが付与される。"""
 
-    @patch("yfinance.download")
-    def test_jp_stock_fetch_mock(self, mock_download):
-        """JP株の取得をモックでテスト"""
-        mock_data = pd.DataFrame(
-            {"Close": [3000.0, 3100.0], "Volume": [500000, 600000]}
-        )
-        mock_download.return_value = mock_data
-        assert len(mock_download.return_value) == 2
+    assert data_fetcher._resolve_symbol("7203", "JP") == "7203.T"  # type: ignore[attr-defined]
+    assert data_fetcher._resolve_symbol("7203.T", "JP") == "7203.T"  # type: ignore[attr-defined]
+    assert data_fetcher._resolve_symbol("AAPL", "US") == "AAPL"  # type: ignore[attr-defined]
+
+
+@patch("src.data_fetcher.yf.download")
+def test_fetch_stock_data_uses_live_data(mock_download):
+    """The fetcher normalises the downloaded frame into a tidy format."""
+
+    mock_download.return_value = _mock_history().set_index("Date")
+
+    frame = data_fetcher.fetch_stock_data(
+        us_symbols=["AAPL"],
+        jp_symbols=[],
+        start_date=date(2024, 1, 1),
+        end_date=date(2024, 1, 3),
+    )
+
+    assert list(frame.columns) == [
+        "date",
+        "open",
+        "high",
+        "low",
+        "close",
+        "adj_close",
+        "volume",
+        "symbol",
+        "market",
+    ]
+    assert frame.iloc[0]["symbol"] == "AAPL"
+    assert frame.iloc[0]["market"] == "US"
+
+
+@patch("src.data_fetcher.yf.download", side_effect=Exception("network error"))
+def test_fetch_stock_data_falls_back_to_sample(mock_download):  # noqa: ARG001
+    """When yfinance fails the module should fall back to deterministic sample data."""
+
+    frame = data_fetcher.fetch_stock_data(
+        us_symbols=["AAPL"],
+        jp_symbols=["7203"],
+        start_date=date(2024, 1, 1),
+        end_date=date(2024, 1, 3),
+    )
+
+    assert not frame.empty
+    assert set(frame["market"].unique()) == {"US", "JP"}
