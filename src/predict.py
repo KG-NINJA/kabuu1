@@ -31,7 +31,7 @@ def determine_market(symbol: str) -> str:
     銘柄コードから市場を判定
     
     Args:
-        symbol: 銘柄コード（例: 'AAPL', '7203'）
+        symbol: 銘柄コード（例: 'NVDA', '7203'）
     
     Returns:
         str: 'US' or 'JP'
@@ -605,26 +605,20 @@ def _create_sample_data() -> pd.DataFrame:
     # プロンプトの例に基づいたサンプルデータ
     today = date.today()
     us_date = get_next_trading_day(today, 'US')
-    jp_date = get_next_trading_day(today, 'JP')
-
-    symbols = ['AAPL', 'GOOGL', 'MSFT', 'TSLA', '7203', '6758', '8306', '9984']
-    markets = ['US', 'US', 'US', 'US', 'JP', 'JP', 'JP', 'JP']
-    current_prices = [192.15, 135.42, 415.33, 248.27, 2250.5, 15500.0, 1780.0, 6600.0]
-    forecast_prices = [price * 1.015 for price in current_prices]
-    confidences = [0.8, 0.76, 0.82, 0.78, 0.74, 0.85, 0.77, 0.72]
-    history_placeholder: List[List[Dict[str, Any]]] = [[] for _ in symbols]
-    dates = [us_date.strftime('%Y-%m-%d')] * 4 + [jp_date.strftime('%Y-%m-%d')] * 4
+    symbol = 'NVDA'
+    current_price = 452.12
+    forecast_price = round(current_price * 1.02, 2)
+    confidence = 0.82
+    history_placeholder: List[List[Dict[str, Any]]] = [[]]
 
     sample_data = {
-
-        'symbol': symbols,
-        'market': markets,
-        'forecast': [round(value, 2) for value in forecast_prices],
-        'current_price': current_prices,
-        'confidence': confidences,
+        'symbol': [symbol],
+        'market': ['US'],
+        'forecast': [forecast_price],
+        'current_price': [current_price],
+        'confidence': [confidence],
         'history': history_placeholder,
-        'date': dates,
-
+        'date': [us_date.strftime('%Y-%m-%d')],
     }
     return pd.DataFrame(sample_data)
 
@@ -660,7 +654,7 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description='株価予測JSON生成システム')
-    parser.add_argument('--us-symbols', nargs='*', default=[], help='米国株のシンボル')
+    parser.add_argument('--us-symbols', nargs='*', default=['NVDA'], help='米国株のシンボル')
     parser.add_argument('--jp-symbols', nargs='*', default=[], help='日本株のシンボル')
     parser.add_argument('--days-ahead', type=int, default=1, help='予測する営業日数')
     parser.add_argument('--lookback-days', type=int, default=365, help='履歴取得日数')

@@ -20,12 +20,15 @@ from src.predict import (
 )
 
 
+TARGET_SYMBOL = "NVDA"
+
+
 def _default_symbols() -> List[str]:
-    return ["AAPL", "GOOGL", "MSFT", "TSLA"]
+    return [TARGET_SYMBOL]
 
 
 def _default_jp_symbols() -> List[str]:
-    return ["9984", "6758", "7203", "8306"]
+    return []
 
 
 def build_argument_parser() -> argparse.ArgumentParser:

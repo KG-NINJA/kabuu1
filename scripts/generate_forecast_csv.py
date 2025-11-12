@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Generate a lightweight forecast CSV using the shared data fetcher.
+
+"""Generate a lightweight NVDA-focused forecast CSV using the shared data fetcher.
+
 
 This script retrieves historical price data through :mod:`src.data_fetcher`
 so that local runs and the GitHub Actions workflows share the exact same
@@ -20,6 +22,10 @@ import pandas as pd
 
 from src.data_fetcher import fetch_stock_data
 from src.validation_helpers import get_next_trading_day
+
+
+TARGET_SYMBOL = "NVDA"
+
 
 FORECAST_COLUMNS = [
     "symbol",
@@ -62,6 +68,9 @@ def build_forecast_table(history: pd.DataFrame, days_ahead: int = 1) -> pd.DataF
     grouped = working.sort_values("date").groupby(["symbol", "market"], sort=True)
 
     for (symbol, market), group in grouped:
+
+        if str(symbol) != TARGET_SYMBOL:
+            continue
         if group.empty:
             continue
 
@@ -72,6 +81,7 @@ def build_forecast_table(history: pd.DataFrame, days_ahead: int = 1) -> pd.DataF
         forecast_price = (latest_close * 0.7) + (ma_5 * 0.2) + (ma_20 * 0.1)
 
         confidence = _calculate_confidence(close_series)
+
 
         last_trading_day = group["date"].iloc[-1].date()
         forecast_date = last_trading_day
@@ -118,13 +128,17 @@ def _create_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--us-symbols",
         nargs="*",
-        default=["AAPL", "GOOGL", "MSFT", "TSLA"],
+
+        default=[TARGET_SYMBOL],
+
         help="US stock symbols",
     )
     parser.add_argument(
         "--jp-symbols",
         nargs="*",
-        default=["9984", "6758", "7203", "8306"],
+
+        default=[],
+
         help="JP stock symbols (without .T)",
     )
     parser.add_argument("--output", type=str, default="forecast_data.csv")
