@@ -7,9 +7,6 @@ on:
     - cron: "0 22 * * 1-5"
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 jobs:
   track_accuracy:
     runs-on: ubuntu-latest
@@ -100,21 +97,6 @@ jobs:
           print("✅ Datasets exported")
           EOF
 
-      - name: Commit research data
-        run: |
-          git config user.email "research@github.com"
-          git config user.name "Research Bot"
-          git add data/research/
-          if ! git diff --staged --quiet; then
-            git commit -m "📊 Research tracking update - $(date +'%Y-%m-%d')"
-            git push origin main
-          else
-            echo "ℹ️ No changes to commit"
-          fi
-        continue-on-error: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Summary
         run: |
           echo "## ✅ Research Tracking Complete"
@@ -126,3 +108,13 @@ jobs:
           echo "- CSV: data/research/research_dataset.csv"
           echo "- JSON: data/research/research_dataset.json"
           echo "- Report: data/research/report_*.md"
+
+      - name: Upload research dataset
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-tracking-${{ github.run_id }}
+          path: |
+            data/research
+          if-no-files-found: warn
+          retention-days: 30
