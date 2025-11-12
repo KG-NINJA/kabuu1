@@ -16,7 +16,7 @@ REQUIRED_PACKAGES: Tuple[Tuple[str, str], ...] = (
     ("pandas", "2.3.3"),
     ("schedule", "1.2.1"),
     ("PyYAML", "6.0.2"),
-=
+
 )
 
 

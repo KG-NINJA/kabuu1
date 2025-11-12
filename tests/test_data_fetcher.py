@@ -28,7 +28,7 @@ def test_resolve_symbol_adds_suffix_for_jp():
 
     assert data_fetcher._resolve_symbol("7203", "JP") == "7203.T"  # type: ignore[attr-defined]
     assert data_fetcher._resolve_symbol("7203.T", "JP") == "7203.T"  # type: ignore[attr-defined]
-<
+
     assert data_fetcher._resolve_symbol("NVDA", "US") == "NVDA"  # type: ignore[attr-defined]
 
 

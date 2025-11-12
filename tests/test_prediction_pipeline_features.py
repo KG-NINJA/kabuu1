@@ -91,3 +91,54 @@ def test_collect_actual_price_confirms_pending_prediction(configured_pipeline, s
     configured_pipeline.collect_actual_price()
 
     assert configured_pipeline.pending_predictions == []
+
+
+
+def test_run_exits_after_duration(monkeypatch: pytest.MonkeyPatch, configured_pipeline):
+    from src import prediction_pipeline as pipeline_module
+
+    call_count = {"value": 0}
+
+    def fake_run_pending():
+        call_count["value"] += 1
+
+    readings = iter([0.0, 30.0, 61.0, 61.0])
+
+    def fake_monotonic():
+        try:
+            return next(readings)
+        except StopIteration:
+            return 61.0
+
+    monkeypatch.setattr(pipeline_module.schedule, "run_pending", fake_run_pending)
+    monkeypatch.setattr(pipeline_module.time, "monotonic", fake_monotonic)
+    monkeypatch.setattr(pipeline_module.time, "sleep", lambda _: None)
+
+    configured_pipeline.run(duration_minutes=1, sleep_seconds=5)
+
+    assert call_count["value"] >= 1
+
+
+def test_run_cycle_respects_flags(monkeypatch: pytest.MonkeyPatch, configured_pipeline):
+    calls: list[str] = []
+
+    monkeypatch.setattr(
+        configured_pipeline,
+        "predict_all_tickers",
+        lambda: calls.append("predict"),
+    )
+    monkeypatch.setattr(
+        configured_pipeline,
+        "collect_actual_price",
+        lambda: calls.append("actual"),
+    )
+    monkeypatch.setattr(
+        configured_pipeline,
+        "weekly_model_review",
+        lambda: calls.append("review"),
+    )
+
+    configured_pipeline.run_cycle(run_prediction=True, run_actuals=False, run_review=True)
+
+    assert calls == ["predict", "review"]
+

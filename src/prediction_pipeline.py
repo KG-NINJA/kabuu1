@@ -3,6 +3,7 @@
 強化学習との連携やスケジューリングを統合
 """
 
+import argparse
 import json
 import logging
 import logging.handlers
@@ -200,13 +201,13 @@ class PredictionPipeline:
 
         self.target_symbol = str(config.get("nvda.symbol", TARGET_SYMBOL) or TARGET_SYMBOL)
         self.model = PredictionModel(config, self.target_symbol)
-=
         base_dir = Path(config.get("nvda.base_dir", "nvda_learning"))
         reward_threshold = float(config.get("nvda.reward_threshold", 0.0))
         self.rl_hub = NvdaReinforcementHub(
             base_dir=base_dir,
             reward_threshold=reward_threshold,
         )
+
 
         # 出力ディレクトリは NVDA 専用ハブと共有
         self.validation_dir = self.rl_hub.validation_dir
@@ -482,26 +483,124 @@ class PredictionPipeline:
         return float(latest_row["close"]), str(latest_row["date"]).split("T")[0]
 
     # -------------------- エントリーポイント --------------------
-    def run(self) -> None:
-        """常駐プロセスとしてスケジューラを実行"""
+    def run(
+        self,
+        duration_minutes: Optional[float] = None,
+        sleep_seconds: float = 60.0,
+    ) -> None:
+        """スケジューラを実行し、任意で稼働時間を制限"""
+
         logging.info("予測パイプラインを起動しました")
+        max_sleep = max(sleep_seconds, 0.1)
+        start_time = time.monotonic()
         try:
             while True:
                 schedule.run_pending()
-                time.sleep(60)
+
+                if duration_minutes is not None:
+                    elapsed_minutes = (time.monotonic() - start_time) / 60.0
+                    if elapsed_minutes >= duration_minutes:
+                        logging.info(
+                            "指定された稼働時間 %.2f 分に達したためスケジューラを終了します",
+                            duration_minutes,
+                        )
+                        break
+
+                time.sleep(max_sleep)
         except KeyboardInterrupt:
             logging.info("ユーザー操作によりパイプラインを終了します")
         except Exception as exc:
             logging.error(f"パイプライン実行中にエラー: {exc}", exc_info=True)
             raise
 
+    def run_cycle(
+        self,
+        *,
+        run_prediction: bool = True,
+        run_actuals: bool = True,
+        run_review: bool = False,
+    ) -> None:
+        """単発実行で必要な処理のみを順次実行"""
+
+        logging.info(
+            "単発サイクル実行を開始します (prediction=%s, actuals=%s, review=%s)",
+            run_prediction,
+            run_actuals,
+            run_review,
+        )
+        if run_prediction:
+            self.predict_all_tickers()
+        if run_actuals:
+            self.collect_actual_price()
+        if run_review:
+            self.weekly_model_review()
+        logging.info("単発サイクル実行が完了しました")
+
 
 def main() -> None:
     """スクリプト起動時のメイン処理"""
+
+    parser = argparse.ArgumentParser(
+        description="NVDA 予測パイプラインの実行モードを制御します"
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["daemon", "cycle"],
+        default="daemon",
+        help="daemon: 常駐監視 / cycle: 単発処理",
+    )
+    parser.add_argument(
+        "--duration-minutes",
+        type=float,
+        default=None,
+        help="daemon モードで稼働させる分数。未指定なら無期限",
+    )
+    parser.add_argument(
+        "--sleep-seconds",
+        type=float,
+        default=60.0,
+        help="スケジューラの待機間隔 (秒)",
+    )
+    parser.add_argument(
+        "--run-prediction",
+        action="store_true",
+        help="cycle モードで予測を実行",
+    )
+    parser.add_argument(
+        "--run-actuals",
+        action="store_true",
+        help="cycle モードで実績取り込みを実行",
+    )
+    parser.add_argument(
+        "--run-review",
+        action="store_true",
+        help="cycle モードで週次レビューを実行",
+    )
+
+    args = parser.parse_args()
+
     config = Config()
     setup_logging(config._config)
     pipeline = PredictionPipeline(config)
-    pipeline.run()
+
+    if args.mode == "daemon":
+        pipeline.run(
+            duration_minutes=args.duration_minutes,
+            sleep_seconds=max(args.sleep_seconds, 0.1),
+        )
+    else:
+        run_prediction = args.run_prediction
+        run_actuals = args.run_actuals
+        run_review = args.run_review
+        if not any([run_prediction, run_actuals, run_review]):
+            run_prediction = True
+            run_actuals = True
+
+        pipeline.run_cycle(
+            run_prediction=run_prediction,
+            run_actuals=run_actuals,
+            run_review=run_review,
+        )
 
 
 if __name__ == "__main__":
