@@ -1,4 +1,4 @@
-name: NVDA Prediction Pipeline Daemon
+name: NVDA Prediction Pipeline Cycle
 
 on:
   schedule:
@@ -11,7 +11,7 @@ on:
 jobs:
   run-pipeline:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 15
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -26,14 +26,75 @@ jobs:
           python -m pip install --upgrade pip setuptools wheel
           pip install -r requirements.txt
 
-      - name: Run scheduled prediction pipeline
-        env:
-          PIPELINE_DURATION_MINUTES: 45
+      - name: Determine execution mode
+        id: mode
         run: |
+          HOUR=$(date -u +%H)
+          
+          # UTC 08:55 頃 → 予測実行
+          if [ $HOUR -eq 8 ]; then
+            echo "run_prediction=true" >> $GITHUB_OUTPUT
+            echo "run_actuals=false" >> $GITHUB_OUTPUT
+            echo "mode_name=Prediction" >> $GITHUB_OUTPUT
+          # UTC 16:25 頃 → 実績取り込み
+          elif [ $HOUR -eq 16 ]; then
+            echo "run_prediction=false" >> $GITHUB_OUTPUT
+            echo "run_actuals=true" >> $GITHUB_OUTPUT
+            echo "mode_name=Actual Price Collection" >> $GITHUB_OUTPUT
+          else
+            echo "run_prediction=true" >> $GITHUB_OUTPUT
+            echo "run_actuals=true" >> $GITHUB_OUTPUT
+            echo "mode_name=Full Cycle" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run prediction cycle
+        run: |
+          echo "=========================================="
+          echo "Mode: ${{ steps.mode.outputs.mode_name }}"
+          echo "=========================================="
+          
           PYTHONPATH=. python -m src.prediction_pipeline \
-            --mode daemon \
-            --duration-minutes ${PIPELINE_DURATION_MINUTES} \
-            --sleep-seconds 30
+            --mode cycle \
+            ${{ steps.mode.outputs.run_prediction == 'true' && '--run-prediction' || '' }} \
+            ${{ steps.mode.outputs.run_actuals == 'true' && '--run-actuals' || '' }}
+
+      - name: Display results
+        if: always()
+        run: |
+          echo "=========================================="
+          echo "Generated Files"
+          echo "=========================================="
+          
+          if [ -d "nvda_learning" ]; then
+            echo "NVDA Learning Directory:"
+            find nvda_learning -type f | head -20
+          else
+            echo "No nvda_learning directory"
+          fi
+          
+          echo ""
+          echo "=========================================="
+          echo "Performance Metrics"
+          echo "=========================================="
+          if [ -f "performance_metrics.json" ]; then
+            echo "✓ performance_metrics.json found"
+            wc -l performance_metrics.json
+            tail -5 performance_metrics.json
+          else
+            echo "✗ performance_metrics.json not found"
+          fi
+          
+          echo ""
+          echo "=========================================="
+          echo "Reinforcement Learning Log"
+          echo "=========================================="
+          if [ -f "reinforcement_learning.log" ]; then
+            echo "✓ reinforcement_learning.log found"
+            wc -l reinforcement_learning.log
+            tail -5 reinforcement_learning.log
+          else
+            echo "✗ reinforcement_learning.log not found"
+          fi
 
       - name: Upload NVDA learning artifacts
         if: always()
@@ -43,5 +104,16 @@ jobs:
           path: |
             nvda_learning/
             performance_metrics.json
-          if-no-files-found: ignore
+            reinforcement_learning.log
+            *.log
+          if-no-files-found: warn
           retention-days: 14
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## NVDA Pipeline Execution Summary"
+          echo "- Mode: ${{ steps.mode.outputs.mode_name }}"
+          echo "- Run Prediction: ${{ steps.mode.outputs.run_prediction }}"
+          echo "- Run Actuals: ${{ steps.mode.outputs.run_actuals }}"
+          echo "- Timestamp: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
