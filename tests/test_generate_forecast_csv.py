@@ -17,7 +17,6 @@ def _history_frame() -> pd.DataFrame:
         {
             "date": dates,
             "close": [100.0, 101.0, 102.0],
-
             "symbol": [generator.TARGET_SYMBOL] * 3,
 
             "market": ["US", "US", "US"],
@@ -33,9 +32,7 @@ def test_build_forecast_table_uses_trading_calendar(mock_next_day):
     table = generator.build_forecast_table(history, days_ahead=1)
 
     assert list(table.columns) == generator.FORECAST_COLUMNS
-
     assert table.iloc[0]["symbol"] == generator.TARGET_SYMBOL
-
     assert table.iloc[0]["market"] == "US"
     assert table.iloc[0]["date"] == "2024-01-05"
     assert table.iloc[0]["current_price"] == pytest.approx(102.0)
@@ -61,9 +58,7 @@ def test_collect_forecasts_fetches_history(mock_fetch, mock_build):
     expected = pd.DataFrame(
         [
             {
-
                 "symbol": generator.TARGET_SYMBOL,
-
                 "market": "US",
                 "date": "2024-01-05",
                 "forecast": 101.7,
@@ -75,22 +70,36 @@ def test_collect_forecasts_fetches_history(mock_fetch, mock_build):
     mock_build.return_value = expected
 
     frame = generator.collect_forecasts(
-
         [generator.TARGET_SYMBOL],
-
         ["7203"],
         lookback_days=90,
         days_ahead=2,
     )
 
     mock_fetch.assert_called_once_with(
-
         us_symbols=[generator.TARGET_SYMBOL],
-
         jp_symbols=["7203"],
         start_date=None,
         end_date=None,
         lookback_days=90,
     )
-    mock_build.assert_called_once_with(mock_history, days_ahead=2)
+    mock_build.assert_called_once_with(
+        mock_history,
+        days_ahead=2,
+        target_symbol=generator.TARGET_SYMBOL,
+    )
     pd.testing.assert_frame_equal(frame, expected)
+
+
+def test_build_forecast_table_all_symbols():
+    primary = _history_frame()
+    secondary = primary.copy()
+    secondary["symbol"] = "AAPL"
+    combined = pd.concat([primary, secondary], ignore_index=True)
+
+    filtered = generator.build_forecast_table(combined, target_symbol=generator.TARGET_SYMBOL)
+    all_symbols = generator.build_forecast_table(combined, target_symbol=None)
+
+    assert set(filtered["symbol"]) == {generator.TARGET_SYMBOL}
+    assert set(all_symbols["symbol"]) == {generator.TARGET_SYMBOL, "AAPL"}
+

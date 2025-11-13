@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 """Generate a lightweight NVDA-focused forecast CSV using the shared data fetcher.
 
 
@@ -23,8 +22,8 @@ import pandas as pd
 from src.data_fetcher import fetch_stock_data
 from src.validation_helpers import get_next_trading_day
 
-
-TARGET_SYMBOL = "NVDA"
+DEFAULT_TARGET_SYMBOL = "NVDA"
+TARGET_SYMBOL = DEFAULT_TARGET_SYMBOL
 
 
 FORECAST_COLUMNS = [
@@ -50,8 +49,26 @@ def _calculate_confidence(close: pd.Series) -> float:
     return max(0.5, min(0.95, 1.0 - float(volatility) * 2))
 
 
-def build_forecast_table(history: pd.DataFrame, days_ahead: int = 1) -> pd.DataFrame:
-    """Create a forecast table from a historical price DataFrame."""
+def build_forecast_table(
+    history: pd.DataFrame,
+    *,
+    days_ahead: int = 1,
+    target_symbol: Optional[str] = DEFAULT_TARGET_SYMBOL,
+) -> pd.DataFrame:
+    """Create a forecast table from a historical price DataFrame.
+
+    Parameters
+    ----------
+    history:
+        Tidy price history where each row contains ``date``/``close``/``symbol``
+        fields.  The function is resilient to empty frames.
+    days_ahead:
+        How many trading days in the future the forecast should be dated.
+    target_symbol:
+        When provided only that symbol is emitted.  Passing ``None`` keeps the
+        original behaviour of including all symbols present in *history*.
+    """
+
 
     if history is None or history.empty:
         return pd.DataFrame(columns=FORECAST_COLUMNS)
@@ -67,10 +84,13 @@ def build_forecast_table(history: pd.DataFrame, days_ahead: int = 1) -> pd.DataF
     records = []
     grouped = working.sort_values("date").groupby(["symbol", "market"], sort=True)
 
+    normalized_target = target_symbol.strip() if isinstance(target_symbol, str) else target_symbol
+    if normalized_target:
+        normalized_target = normalized_target.upper()
+
     for (symbol, market), group in grouped:
-
-
-        if str(symbol) != TARGET_SYMBOL:
+        symbol_str = str(symbol)
+        if normalized_target and symbol_str.upper() != normalized_target:
             continue
         if group.empty:
             continue
@@ -84,7 +104,6 @@ def build_forecast_table(history: pd.DataFrame, days_ahead: int = 1) -> pd.DataF
         confidence = _calculate_confidence(close_series)
 
 
-
         last_trading_day = group["date"].iloc[-1].date()
         forecast_date = last_trading_day
         for _ in range(max(days_ahead, 1)):
@@ -92,7 +111,8 @@ def build_forecast_table(history: pd.DataFrame, days_ahead: int = 1) -> pd.DataF
 
         records.append(
             {
-                "symbol": str(symbol),
+                "symbol": symbol_str,
+
                 "market": str(market),
                 "date": forecast_date.isoformat(),
                 "forecast": round(float(forecast_price), 2),
@@ -112,6 +132,8 @@ def collect_forecasts(
     days_ahead: int = 1,
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
+    target_symbol: Optional[str] = DEFAULT_TARGET_SYMBOL,
+
 ) -> pd.DataFrame:
     """Fetch history for the requested symbols and build the forecast table."""
 
@@ -122,7 +144,12 @@ def collect_forecasts(
         end_date=end_date,
         lookback_days=lookback_days,
     )
-    return build_forecast_table(history, days_ahead=days_ahead)
+    return build_forecast_table(
+        history,
+        days_ahead=days_ahead,
+        target_symbol=target_symbol,
+    )
+
 
 
 def _create_argument_parser() -> argparse.ArgumentParser:
@@ -130,7 +157,6 @@ def _create_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--us-symbols",
         nargs="*",
-
         default=[TARGET_SYMBOL],
 
         help="US stock symbols",
@@ -138,7 +164,6 @@ def _create_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--jp-symbols",
         nargs="*",
-
         default=[],
 
         help="JP stock symbols (without .T)",
@@ -148,6 +173,16 @@ def _create_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--days-ahead", type=int, default=1, help="How many trading days ahead to forecast")
     parser.add_argument("--start-date", type=str, help="Optional history start date (YYYY-MM-DD)")
     parser.add_argument("--end-date", type=str, help="Optional history end date (YYYY-MM-DD)")
+    parser.add_argument(
+        "--target-symbol",
+        type=str,
+        default=DEFAULT_TARGET_SYMBOL,
+        help=(
+            "Limit the output to a specific symbol (default: NVDA). "
+            "Pass 'ALL' or an empty string to include every fetched symbol."
+        ),
+    )
+
     return parser
 
 
@@ -162,6 +197,11 @@ def main() -> None:
     print("=" * 50)
     print(f"🎯 US Symbols: {us_symbols or 'None'}")
     print(f"🎯 JP Symbols: {jp_symbols or 'None'}")
+    print(
+        "🎯 Target symbol: "
+        f"{args.target_symbol if args.target_symbol not in (None, '') else 'ALL'}"
+    )
+
     print(f"📈 Lookback days: {args.lookback_days}")
     print(f"📅 Days ahead: {args.days_ahead}")
     print()
@@ -173,6 +213,13 @@ def main() -> None:
         days_ahead=args.days_ahead,
         start_date=_parse_date(args.start_date),
         end_date=_parse_date(args.end_date),
+        target_symbol=(
+            None
+            if not args.target_symbol
+            or args.target_symbol.upper() == "ALL"
+            else args.target_symbol
+        ),
+
     )
 
     if forecast_table.empty:

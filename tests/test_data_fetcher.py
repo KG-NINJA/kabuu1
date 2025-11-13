@@ -28,7 +28,6 @@ def test_resolve_symbol_adds_suffix_for_jp():
 
     assert data_fetcher._resolve_symbol("7203", "JP") == "7203.T"  # type: ignore[attr-defined]
     assert data_fetcher._resolve_symbol("7203.T", "JP") == "7203.T"  # type: ignore[attr-defined]
-
     assert data_fetcher._resolve_symbol("NVDA", "US") == "NVDA"  # type: ignore[attr-defined]
 
 
@@ -40,7 +39,6 @@ def test_fetch_stock_data_uses_live_data(mock_download):
     mock_download.return_value = _mock_history().set_index("Date")
 
     frame = data_fetcher.fetch_stock_data(
-
         us_symbols=["NVDA"],
 
         jp_symbols=[],
@@ -59,7 +57,6 @@ def test_fetch_stock_data_uses_live_data(mock_download):
         "symbol",
         "market",
     ]
-
     assert frame.iloc[0]["symbol"] == "NVDA"
 
     assert frame.iloc[0]["market"] == "US"
@@ -70,7 +67,6 @@ def test_fetch_stock_data_falls_back_to_sample(mock_download):  # noqa: ARG001
     """When yfinance fails the module should fall back to deterministic sample data."""
 
     frame = data_fetcher.fetch_stock_data(
-
         us_symbols=["NVDA"],
 
         jp_symbols=["7203"],

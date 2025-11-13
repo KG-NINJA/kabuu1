@@ -37,21 +37,47 @@ def setup_logging(config: dict) -> None:
     log_config = config.get("logging", {})
     log_file = log_config.get("file", "prediction_pipeline.log")
 
-    handlers: List[logging.Handler] = [
-        RotatingFileHandler(
-            log_file,
-            maxBytes=log_config.get("max_bytes", 5 * 1024 * 1024),
-            backupCount=log_config.get("backup_count", 5),
-            encoding="utf-8",
-        ),
-        logging.StreamHandler(),
-    ]
+    log_path: Optional[Path]
+    if log_file:
+        candidate = Path(log_file)
+        log_path = candidate if candidate.is_absolute() else PROJECT_ROOT / candidate
+    else:
+        log_path = None
+
+    warnings: List[str] = []
+    if log_path is not None:
+        try:
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+        except Exception as exc:  # pragma: no cover - unexpected but defensive
+            warnings.append(
+                f"ログディレクトリの作成に失敗したため標準出力のみを使用します: {exc}"
+            )
+            log_path = None
+
+    root_logger = logging.getLogger()
+    for handler in list(root_logger.handlers):
+        root_logger.removeHandler(handler)
+
+    handlers: List[logging.Handler] = [logging.StreamHandler()]
+    if log_path is not None:
+        handlers.insert(
+            0,
+            RotatingFileHandler(
+                log_path,
+                maxBytes=int(log_config.get("max_bytes", 5 * 1024 * 1024)),
+                backupCount=int(log_config.get("backup_count", 5)),
+                encoding="utf-8",
+            ),
+        )
 
     logging.basicConfig(
         level=getattr(logging, log_config.get("level", "INFO")),
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         handlers=handlers,
     )
+
+    for message in warnings:
+        logging.getLogger(__name__).warning(message)
 
     # ノイズの多い外部ライブラリのログレベルを抑制
     for lib in ["matplotlib", "tensorflow", "urllib3"]:
@@ -146,7 +172,6 @@ class PredictionModel:
             raw_close = pd.Series(raw_close, index=frame.index)
 
         frame.loc[:, "close"] = pd.to_numeric(raw_close, errors="coerce")
-
         frame["ma_5"] = frame["close"].rolling(window=5, min_periods=5).mean()
         frame["ma_20"] = frame["close"].rolling(window=20, min_periods=20).mean()
         frame["return_1d"] = frame["close"].pct_change()
@@ -219,7 +244,6 @@ class PredictionPipeline:
         self.config = config
 
         # NVDA専用の強化学習ハブを初期化
-
         from .nvda_reinforcement import NvdaReinforcementHub, TARGET_SYMBOL  # type: ignore[import-not-found]
 
         self.target_symbol = str(config.get("nvda.symbol", TARGET_SYMBOL) or TARGET_SYMBOL)
@@ -230,7 +254,6 @@ class PredictionPipeline:
             base_dir=base_dir,
             reward_threshold=reward_threshold,
         )
-
 
         # 出力ディレクトリは NVDA 専用ハブと共有
         self.validation_dir = self.rl_hub.validation_dir
@@ -567,7 +590,6 @@ def main() -> None:
         description="NVDA 予測パイプラインの実行モードを制御します"
     )
     parser.add_argument(
-
         "--config",
         type=str,
         default=None,

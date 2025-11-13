@@ -70,6 +70,7 @@ python -m src.prediction_pipeline --mode cycle --run-prediction --run-actuals
 # カスタム設定ファイルを指定する場合
 python -m src.prediction_pipeline --config custom/path/to/config.yaml
 
+
 ```
 
 ### Docker での実行
@@ -87,7 +88,9 @@ docker-compose up -d
 
 ## 🧠 NVDA 専用アーキテクチャ
 
-- `scripts/generate_forecast_csv.py` は NVDA のみを対象にデータを取得
+
+- `scripts/generate_forecast_csv.py` は デフォルトで NVDA を対象にデータを取得し、`--target-symbol ALL` で複数銘柄をまとめて出力可能
+
 - `src/nvda_reinforcement.py` が強化学習ログを NVDA 専用ディレクトリへ分離
 - `src/prediction_pipeline.py` は NVDA のスケジュール実行と自動改善を担保
 - LLM プロンプト生成も NVDA の履歴に合わせて最適化
@@ -169,10 +172,10 @@ pytest tests/test_rl.py -v
 以下のワークフローは成果物をアーティファクトとして保存し、リポジトリへ直接 push しません。
 
 
+
 - **prediction-pipeline-ci.yml**: main ブランチへの push / PR、平日 06:00/21:00 UTC のスケジュールで予測パイプラインを検証します。
 - **daily_forecast.yml**: 毎日 09:00 UTC に実行し、最新予測とアーカイブを生成します。
 - **prediction-pipeline-daemon.yml**: 平日 08:55/16:25 UTC に `PredictionPipeline.run` を45分間自動稼働させ、スケジューラ経由で予測と実績取り込みを実行します。
-
 - **Research Tracking.yml**: 平日 22:00 UTC に精度メトリクスとレポートを更新します。
 
 ## 📝 ログ出力
@@ -192,6 +195,12 @@ logs/
 ```bash
 # 依存関係の再インストール
 pip install --upgrade -r requirements.txt
+```
+
+### ログが重複出力される
+```bash
+# 基本設定の再読み込みでルートロガーを初期化してから再実行
+python -m src.prediction_pipeline --config config/config.yaml
 ```
 
 ### TA-Lib のインストール失敗
