@@ -1,58 +1,30 @@
-name: Prediction Pipeline CI - Simple Test
+name: Debug Data Fetcher
 
 on:
   workflow_dispatch:
 
 jobs:
-  simple_test:
+  debug:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install dependencies
+      - name: Show src/data_fetcher.py
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          echo "=== src/data_fetcher.py ===" 
+          cat src/data_fetcher.py
 
-      - name: Step 1 - List files
+      - name: Show src/__init__.py
         run: |
-          echo "Current directory: $(pwd)"
-          echo "Files in src/:"
-          ls -la src/
-          echo "Files in scripts/:"
-          ls -la scripts/ || echo "scripts/ not found"
+          echo "=== src/__init__.py ==="
+          cat src/__init__.py
 
-      - name: Step 2 - Test import
+      - name: Show first 30 lines of all src/ Python files
         run: |
-          PYTHONPATH=. python -c "from src.data_fetcher import fetch_stock_data; print('Import OK')" 2>&1 || echo "Import failed - checking error"
-
-      - name: Step 3 - Create output dir
-        run: |
-          mkdir -p darwin_analysis
-          echo "Created darwin_analysis/"
-
-      - name: Step 4 - Fetch data
-        run: |
-          PYTHONPATH=. python3 << 'EOF'
-          from src.data_fetcher import fetch_stock_data
-          from datetime import datetime, timedelta
-          
-          end_date = datetime.now().date()
-          start_date = end_date - timedelta(days=30)
-          
-          print(f"Fetching AAPL from {start_date} to {end_date}")
-          df = fetch_stock_data(us_symbols=['AAPL'], jp_symbols=[], start_date=start_date, end_date=end_date)
-          print(f"Fetched {len(df)} rows")
-          print(df.head())
-          EOF
-
-      - name: Step 5 - Check files
-        run: |
-          echo "Contents of darwin_analysis/:"
-          ls -la darwin_analysis/ || echo "Directory empty"
+          echo "=== Checking all src/*.py files ==="
+          for file in src/*.py; do
+            echo ""
+            echo "--- $file (first 30 lines) ---"
+            head -30 "$file"
+          done
