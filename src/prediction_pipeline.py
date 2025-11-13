@@ -134,6 +134,7 @@ class PredictionModel:
         frame["date"] = pd.to_datetime(frame["date"])
         frame.sort_values("date", inplace=True)
 
+
         # GitHub Actions 上で `close` 列が DataFrame や配列になり TypeError が
         # 発生したため、あらゆるケースに対応して 1 次元の Series として
         # 正規化してから数値変換を行う。これにより学習データが欠損しても
@@ -145,6 +146,7 @@ class PredictionModel:
             raw_close = pd.Series(raw_close, index=frame.index)
 
         frame.loc[:, "close"] = pd.to_numeric(raw_close, errors="coerce")
+
         frame["ma_5"] = frame["close"].rolling(window=5, min_periods=5).mean()
         frame["ma_20"] = frame["close"].rolling(window=20, min_periods=20).mean()
         frame["return_1d"] = frame["close"].pct_change()
@@ -217,6 +219,7 @@ class PredictionPipeline:
         self.config = config
 
         # NVDA専用の強化学習ハブを初期化
+
         from .nvda_reinforcement import NvdaReinforcementHub, TARGET_SYMBOL  # type: ignore[import-not-found]
 
         self.target_symbol = str(config.get("nvda.symbol", TARGET_SYMBOL) or TARGET_SYMBOL)
@@ -227,6 +230,7 @@ class PredictionPipeline:
             base_dir=base_dir,
             reward_threshold=reward_threshold,
         )
+
 
         # 出力ディレクトリは NVDA 専用ハブと共有
         self.validation_dir = self.rl_hub.validation_dir
@@ -563,12 +567,14 @@ def main() -> None:
         description="NVDA 予測パイプラインの実行モードを制御します"
     )
     parser.add_argument(
+
         "--config",
         type=str,
         default=None,
         help="設定ファイルのパス。未指定の場合は config/config.yaml を使用",
     )
     parser.add_argument(
+
         "--mode",
         choices=["daemon", "cycle"],
         default="daemon",
@@ -605,6 +611,7 @@ def main() -> None:
     args = parser.parse_args()
 
     config = Config(args.config)
+
     setup_logging(config._config)
     pipeline = PredictionPipeline(config)
 
