@@ -1,16 +1,12 @@
-name: Prediction Pipeline CI with LLM Output
+name: Prediction Pipeline CI - Debug
 
 on:
   push:
     branches: [main]
-  pull_request:
-  schedule:
-    - cron: '0 6 * * 1-5'
-    - cron: '0 21 * * 1-5'
   workflow_dispatch:
 
 jobs:
-  predict_and_validate:
+  debug_pipeline:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -21,63 +17,103 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install core dependencies
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip setuptools wheel
           pip install -r requirements.txt
           pip install holidays
-          if [ -f prediction_pipeline/requirements.txt ]; then
-            pip install -r prediction_pipeline/requirements.txt
-          fi
 
-      - name: Generate forecast CSV from real stock data
+      - name: Check Python environment
         run: |
-          echo "Generating forecast from real stock data..."
-          PYTHONPATH=. python scripts/generate_forecast_csv.py \
-            --output forecast_data.csv \
-            --us-symbols AAPL GOOGL MSFT TSLA \
-            --jp-symbols 9984 6758 7203 8306
-          echo "Forecast CSV generated"
+          python --version
+          python -c "import sys; print('Python path:', sys.path)"
 
-      - name: Run prediction with validation
+      - name: List project structure
         run: |
-          echo "Running prediction with validation..."
-          PYTHONPATH=. python src/predict.py \
-            --csv forecast_data.csv \
-            --output darwin_analysis/forecast_analysis.json \
-            --validate \
-            --verbose
-          echo "Prediction completed"
+          echo "=== Project Structure ==="
+          find . -type f -name "*.py" | grep -E "(src/|scripts/)" | head -20
 
-      - name: Validate JSON structure
+      - name: Test data fetcher import
         run: |
-          PYTHONPATH=. python scripts/validate_json.py
+          echo "=== Testing data fetcher ==="
+          PYTHONPATH=. python -c "
+          from src.data_fetcher import fetch_stock_data
+          from datetime import datetime, timedelta
+          
+          end_date = datetime.now().date()
+          start_date = end_date - timedelta(days=365)
+          
+          print(f'Fetching NVDA data from {start_date} to {end_date}')
+          df = fetch_stock_data(us_symbols=['NVDA'], jp_symbols=[], start_date=start_date, end_date=end_date)
+          print(f'✓ Data fetched: {len(df)} rows')
+          print(f'Columns: {list(df.columns)}')
+          if len(df) > 0:
+              print(f'First row: {df.iloc[0].to_dict()}')
+          "
 
-      - name: Generate LLM Prompts
+      - name: Check if scripts exist
         run: |
-          echo "Generating LLM prompts..."
-          mkdir -p darwin_analysis/llm_prompts
-          PYTHONPATH=. python src/llm_prompt_generator.py \
-            --json darwin_analysis/forecast_analysis.json \
-            --output darwin_analysis/llm_prompts
-          echo "LLM prompts generated"
+          echo "=== Checking scripts ==="
+          ls -la scripts/ || echo "scripts/ directory not found"
+          ls -la src/ || echo "src/ directory not found"
 
-      - name: Generate quality report
+      - name: Test prediction pipeline directly
         run: |
-          PYTHONPATH=. python scripts/generate_quality_report.py
+          echo "=== Testing prediction pipeline ==="
+          PYTHONPATH=. python -c "
+          import sys
+          sys.path.insert(0, '.')
+          
+          try:
+              from src.prediction_pipeline import main
+              print('✓ Prediction pipeline imported')
+          except ImportError as e:
+              print(f'✗ Import error: {e}')
+              sys.exit(1)
+          "
 
-      - name: Upload artifacts
+      - name: Generate forecast CSV manually
+        run: |
+          echo "=== Generating forecast CSV ==="
+          mkdir -p darwin_analysis
+          
+          PYTHONPATH=. python << 'FORECAST_SCRIPT'
+          from src.data_fetcher import fetch_stock_data
+          from datetime import datetime, timedelta
+          from pathlib import Path
+          import pandas as pd
+          
+          end_date = datetime.now().date()
+          start_date = end_date - timedelta(days=365)
+          
+          print(f'Fetching data...')
+          df = fetch_stock_data(
+              us_symbols=['AAPL', 'GOOGL', 'MSFT', 'TSLA'],
+              jp_symbols=['9984', '6758', '7203', '8306'],
+              start_date=start_date,
+              end_date=end_date
+          )
+          
+          print(f'Data shape: {df.shape}')
+          print(f'Columns: {list(df.columns)}')
+          
+          output_path = Path('darwin_analysis/forecast_data.csv')
+          output_path.parent.mkdir(parents=True, exist_ok=True)
+          df.to_csv(output_path, index=False)
+          print(f'Saved to {output_path}')
+          FORECAST_SCRIPT
+
+      - name: List generated files
+        if: always()
+        run: |
+          echo "=== Generated files ==="
+          find darwin_analysis -type f 2>/dev/null || echo "No files in darwin_analysis"
+          find . -name "forecast_analysis.json" 2>/dev/null || echo "forecast_analysis.json not found"
+
+      - name: Upload debug artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: prediction-analysis-${{ github.run_number }}
+          name: debug-output
           path: darwin_analysis/
-          retention-days: 30
-
-      - name: Summary
-        run: |
-          echo "Pipeline Completed"
-          echo "Generated Files:"
-          echo "- JSON Analysis: darwin_analysis/forecast_analysis.json"
-          echo "- LLM Prompts: darwin_analysis/llm_prompts/"
-          echo "- Quality Report: darwin_analysis/QUALITY_REPORT.md"
+          retention-days: 7
