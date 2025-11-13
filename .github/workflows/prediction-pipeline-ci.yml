@@ -27,7 +27,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip setuptools wheel
           pip install -r requirements.txt
-          pip install holidays  # 祝日判定用
+          pip install holidays
           if [ -f prediction_pipeline/requirements.txt ]; then
             pip install -r prediction_pipeline/requirements.txt
           fi
@@ -69,7 +69,6 @@ jobs:
             --verbose
           
           echo "✅ Prediction completed"
-          echo "📊 JSON Statistics:"
           python -c "
           import json
           with open('darwin_analysis/forecast_analysis.json') as f:
@@ -151,53 +150,7 @@ jobs:
 
       - name: Generate quality report
         run: |
-          echo "📊 Generating quality report..."
-          python -c "
-          import json
-          from pathlib import Path
-          
-          with open('darwin_analysis/forecast_analysis.json') as f:
-              data = json.load(f)
-          
-          summary = data.get('summary', {})
-          
-          report = f'''# 📊 Stock Prediction Quality Report
-          
-## Generation Status
-- **Status**: {data.get('generation_status', 'UNKNOWN')}
-- **Timestamp**: {data.get('timestamp', 'N/A')}
-- **Next Trading Day**: {data.get('next_trading_day', 'N/A')}
-
-## Prediction Statistics
-- **Total Symbols**: {data.get('symbols_predicted', 0)}
-- **Total Predictions**: {data.get('total_predictions', 0)}
-- **Valid Predictions**: {summary.get('valid_predictions', 0)}
-- **Warning Predictions**: {summary.get('warning_predictions', 0)}
-- **Error Predictions**: {summary.get('error_predictions', 0)}
-
-## Confidence Scores
-- **Original Average**: {data.get('statistics', {}).get('avg_confidence_original', 0):.2%}
-- **Adjusted Average**: {data.get('statistics', {}).get('avg_confidence_adjusted', 0):.2%}
-- **Reduction**: {(data.get('statistics', {}).get('avg_confidence_original', 0) - data.get('statistics', {}).get('avg_confidence_adjusted', 0)) * 100:.1f}%
-
-## Data Quality
-- **Quality**: {summary.get('data_quality', 'UNKNOWN')}
-- **Recommendation**: {summary.get('recommendation', 'N/A')}
-
-## Issues Detected
-{chr(10).join([f\"- {issue}\" for issue in data.get('data_issues', [])])}
-
-## Reliable Predictions
-Only use these for LLM analysis:
-'''
-          
-          for forecast in data.get('forecasts', []):
-              if forecast.get('validation', {}).get('severity') == 'ok':
-                  report += f\"\\n- **{forecast['symbol']}**: {forecast.get('forecast', 'N/A')} (Confidence: {forecast.get('confidence', {}).get('adjusted', 0):.0%})\"
-          
-          Path('darwin_analysis/QUALITY_REPORT.md').write_text(report)
-          print(report)
-          "
+          python scripts/generate_quality_report.py
 
       - name: Upload artifacts
         if: always()
