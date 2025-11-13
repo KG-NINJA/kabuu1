@@ -1,12 +1,10 @@
-name: Prediction Pipeline CI - Debug
+name: Prediction Pipeline CI - Simple Test
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 jobs:
-  debug_pipeline:
+  simple_test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -19,101 +17,42 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install holidays
 
-      - name: Check Python environment
+      - name: Step 1 - List files
         run: |
-          python --version
-          python -c "import sys; print('Python path:', sys.path)"
+          echo "Current directory: $(pwd)"
+          echo "Files in src/:"
+          ls -la src/
+          echo "Files in scripts/:"
+          ls -la scripts/ || echo "scripts/ not found"
 
-      - name: List project structure
+      - name: Step 2 - Test import
         run: |
-          echo "=== Project Structure ==="
-          find . -type f -name "*.py" | grep -E "(src/|scripts/)" | head -20
+          PYTHONPATH=. python -c "from src.data_fetcher import fetch_stock_data; print('Import OK')"
 
-      - name: Test data fetcher import
+      - name: Step 3 - Create output dir
         run: |
-          echo "=== Testing data fetcher ==="
-          PYTHONPATH=. python -c "
-          from src.data_fetcher import fetch_stock_data
-          from datetime import datetime, timedelta
-          
-          end_date = datetime.now().date()
-          start_date = end_date - timedelta(days=365)
-          
-          print(f'Fetching NVDA data from {start_date} to {end_date}')
-          df = fetch_stock_data(us_symbols=['NVDA'], jp_symbols=[], start_date=start_date, end_date=end_date)
-          print(f'✓ Data fetched: {len(df)} rows')
-          print(f'Columns: {list(df.columns)}')
-          if len(df) > 0:
-              print(f'First row: {df.iloc[0].to_dict()}')
-          "
-
-      - name: Check if scripts exist
-        run: |
-          echo "=== Checking scripts ==="
-          ls -la scripts/ || echo "scripts/ directory not found"
-          ls -la src/ || echo "src/ directory not found"
-
-      - name: Test prediction pipeline directly
-        run: |
-          echo "=== Testing prediction pipeline ==="
-          PYTHONPATH=. python -c "
-          import sys
-          sys.path.insert(0, '.')
-          
-          try:
-              from src.prediction_pipeline import main
-              print('✓ Prediction pipeline imported')
-          except ImportError as e:
-              print(f'✗ Import error: {e}')
-              sys.exit(1)
-          "
-
-      - name: Generate forecast CSV manually
-        run: |
-          echo "=== Generating forecast CSV ==="
           mkdir -p darwin_analysis
-          
-          PYTHONPATH=. python << 'FORECAST_SCRIPT'
+          echo "Created darwin_analysis/"
+
+      - name: Step 4 - Fetch data
+        run: |
+          PYTHONPATH=. python3 << 'EOF'
           from src.data_fetcher import fetch_stock_data
           from datetime import datetime, timedelta
-          from pathlib import Path
-          import pandas as pd
           
           end_date = datetime.now().date()
-          start_date = end_date - timedelta(days=365)
+          start_date = end_date - timedelta(days=30)
           
-          print(f'Fetching data...')
-          df = fetch_stock_data(
-              us_symbols=['AAPL', 'GOOGL', 'MSFT', 'TSLA'],
-              jp_symbols=['9984', '6758', '7203', '8306'],
-              start_date=start_date,
-              end_date=end_date
-          )
-          
-          print(f'Data shape: {df.shape}')
-          print(f'Columns: {list(df.columns)}')
-          
-          output_path = Path('darwin_analysis/forecast_data.csv')
-          output_path.parent.mkdir(parents=True, exist_ok=True)
-          df.to_csv(output_path, index=False)
-          print(f'Saved to {output_path}')
-          FORECAST_SCRIPT
+          print(f"Fetching AAPL from {start_date} to {end_date}")
+          df = fetch_stock_data(us_symbols=['AAPL'], jp_symbols=[], start_date=start_date, end_date=end_date)
+          print(f"Fetched {len(df)} rows")
+          print(df.head())
+          EOF
 
-      - name: List generated files
-        if: always()
+      - name: Step 5 - Check files
         run: |
-          echo "=== Generated files ==="
-          find darwin_analysis -type f 2>/dev/null || echo "No files in darwin_analysis"
-          find . -name "forecast_analysis.json" 2>/dev/null || echo "forecast_analysis.json not found"
-
-      - name: Upload debug artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: debug-output
-          path: darwin_analysis/
-          retention-days: 7
+          echo "Contents of darwin_analysis/:"
+          ls -la darwin_analysis/ || echo "Directory empty"
