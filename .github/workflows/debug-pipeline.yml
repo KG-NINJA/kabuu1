@@ -21,6 +21,110 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       
+      - name: Create debug script
+        run: |
+          cat > debug_nvda.py << 'EOF'
+          #!/usr/bin/env python3
+          """NVDAデータ取得とフレーム構築のデバッグスクリプト"""
+          
+          import sys
+          import json
+          from pathlib import Path
+          from datetime import datetime, timedelta
+          
+          sys.path.insert(0, str(Path(__file__).parent))
+          
+          def debug_data_pipeline():
+              """パイプライン各ステップをデバッグ"""
+              
+              print("=" * 60)
+              print("NVDA Data Pipeline Debug")
+              print("=" * 60)
+              
+              try:
+                  from src.data_fetcher import DataFetcher
+                  print("✓ DataFetcher imported successfully")
+              except Exception as e:
+                  print(f"✗ Failed to import DataFetcher: {e}")
+                  return
+              
+              end_date = datetime.now().date()
+              start_date = end_date - timedelta(days=365)
+              
+              print(f"\n[1] Date Range Check")
+              print(f"    Start: {start_date}")
+              print(f"    End:   {end_date}")
+              
+              print(f"\n[2] Attempting to fetch NVDA data...")
+              try:
+                  fetcher = DataFetcher()
+                  df = fetcher.fetch_us_data("NVDA", start_date, end_date)
+                  print(f"✓ Data fetched: {len(df)} rows")
+                  print(f"    Columns: {list(df.columns)}")
+                  print(f"    Shape: {df.shape}")
+                  print(f"    First row:\n{df.iloc[0] if len(df) > 0 else 'Empty'}")
+                  print(f"    Last row:\n{df.iloc[-1] if len(df) > 0 else 'Empty'}")
+                  print(f"    Null counts:\n{df.isnull().sum()}")
+                  
+                  if len(df) == 0:
+                      print("⚠ WARNING: DataFrame is empty!")
+                      return
+                      
+              except Exception as e:
+                  print(f"✗ Data fetch failed: {e}")
+                  import traceback
+                  traceback.print_exc()
+                  return
+              
+              print(f"\n[3] Feature Engineering Check")
+              try:
+                  from src.feature_engineer import FeatureEngineer
+                  engineer = FeatureEngineer()
+                  augmented = engineer.augment(df)
+                  print(f"✓ Features augmented: {len(augmented)} rows")
+                  print(f"    Columns: {list(augmented.columns)}")
+                  
+                  required = ['close', 'ma_5', 'ma_20', 'return_1d', 'volatility_5d', 'target']
+                  missing = [col for col in required if col not in augmented.columns]
+                  
+                  if missing:
+                      print(f"✗ Missing columns: {missing}")
+                  else:
+                      print(f"✓ All required columns present")
+                      
+                  print(f"    Null counts:\n{augmented[required].isnull().sum()}")
+                  
+              except Exception as e:
+                  print(f"✗ Feature engineering failed: {e}")
+                  import traceback
+                  traceback.print_exc()
+                  return
+              
+              print(f"\n[4] Data Cleaning (dropna) Check")
+              try:
+                  cleaned = augmented.dropna(subset=required)
+                  print(f"✓ After dropna: {len(cleaned)} rows (dropped {len(augmented) - len(cleaned)})")
+                  
+                  if len(cleaned) < 10:
+                      print(f"⚠ WARNING: Only {len(cleaned)} rows after dropna. May be too few for training.")
+                      
+              except KeyError as ke:
+                  print(f"✗ KeyError during dropna: {ke}")
+                  print(f"    Available columns: {list(augmented.columns)}")
+                  
+              except Exception as e:
+                  print(f"✗ Unexpected error: {e}")
+                  import traceback
+                  traceback.print_exc()
+              
+              print("\n" + "=" * 60)
+              print("Debug complete")
+              print("=" * 60)
+          
+          if __name__ == "__main__":
+              debug_data_pipeline()
+          EOF
+      
       - name: Run debug script
         env:
           PYTHONPATH: .
@@ -34,5 +138,4 @@ jobs:
           name: debug-output
           path: |
             *.log
-            debug_nvda.py
           retention-days: 7
