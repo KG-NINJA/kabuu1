@@ -6,6 +6,9 @@ import sys
 sys.path.insert(0, "src")
 
 
+TARGET_SYMBOL = "NVDA"
+
+
 class TestPipelineIntegration:
     """パイプライン統合テスト"""
 
@@ -15,34 +18,31 @@ class TestPipelineIntegration:
         np.random.seed(42)
         return pd.DataFrame(
             {
-                "symbol": ["AAPL"] * 50
-                + ["9984"] * 50
-                + ["GOOGL"] * 50
-                + ["6758"] * 50,
-                "Close": np.tile(100 + np.cumsum(np.random.randn(50) * 2), 4),
-                "Volume": np.tile(np.random.uniform(1000000, 5000000, 50), 4),
+                "symbol": [TARGET_SYMBOL] * 200,
+                "Close": 100 + np.cumsum(np.random.randn(200) * 2),
+                "Volume": np.random.uniform(1_000_000, 5_000_000, 200),
             }
         )
 
-    def test_multi_symbol_data_structure(self, sample_prediction_data):
-        """複数銘柄データの構造テスト"""
+    def test_single_symbol_focus(self, sample_prediction_data):
+        """NVDA の単一銘柄データに統一されていることを検証する。"""
         assert "symbol" in sample_prediction_data.columns
         assert "Close" in sample_prediction_data.columns
         symbols = sample_prediction_data["symbol"].unique()
-        assert len(symbols) == 4
+        assert list(symbols) == [TARGET_SYMBOL]
 
     def test_prediction_output_format(self):
         """予測出力フォーマットのテスト"""
         prediction_output = pd.DataFrame(
             {
-                "symbol": ["AAPL", "9984", "GOOGL", "6758"],
-                "forecast_5d": [155.2, 3150.5, 185.3, 2890.1],
-                "confidence": [0.85, 0.78, 0.82, 0.75],
-                "model": ["LSTM", "XGBoost", "LSTM", "XGBoost"],
+                "symbol": [TARGET_SYMBOL],
+                "forecast_5d": [155.2],
+                "confidence": [0.85],
+                "model": ["LSTM"],
             }
         )
 
-        assert len(prediction_output) == 4
+        assert len(prediction_output) == 1
         assert all(
             col in prediction_output.columns
             for col in ["symbol", "forecast_5d", "confidence", "model"]

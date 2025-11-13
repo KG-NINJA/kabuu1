@@ -6,8 +6,6 @@
 import json
 import logging
 import math
-import os
-import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -16,62 +14,16 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
-# 親ディレクトリをパスに追加（CI環境でも動作するように）
-current_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(current_dir)
-if parent_dir not in sys.path:
-    sys.path.insert(0, parent_dir)
-
-# インポート（相対パスと絶対パスの両方に対応）
-try:
-    from src.data_fetcher import fetch_stock_data
-except ImportError:
-    try:
-        from data_fetcher import fetch_stock_data  # type: ignore
-    except ImportError:
-        fetch_stock_data = None  # type: ignore
-
-try:
-
-        from src.validation_helpers import (
-            is_trading_day,
-            get_next_trading_day,
-            validate_price_prediction,
-            detect_scale_error,
-            enforce_price_ratio_limits,
-            validate_history_bounds,
-            recalculate_confidence
-        )
-
-except ImportError as e:
-    # 相対インポートを試す
-    try:
-        from validation_helpers import (
-            is_trading_day,
-            get_next_trading_day,
-            validate_price_prediction,
-            detect_scale_error,
-            enforce_price_ratio_limits,
-            validate_history_bounds,
-            recalculate_confidence
-        )
-    except ImportError:
-        # 最後の手段：直接パスからインポート
-        import importlib.util
-        validation_helpers_path = os.path.join(current_dir, 'validation_helpers.py')
-        if os.path.exists(validation_helpers_path):
-            spec = importlib.util.spec_from_file_location("validation_helpers", validation_helpers_path)
-            validation_helpers = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(validation_helpers)
-            is_trading_day = validation_helpers.is_trading_day
-            get_next_trading_day = validation_helpers.get_next_trading_day
-            validate_price_prediction = validation_helpers.validate_price_prediction
-            detect_scale_error = validation_helpers.detect_scale_error
-            enforce_price_ratio_limits = validation_helpers.enforce_price_ratio_limits
-            validate_history_bounds = validation_helpers.validate_history_bounds
-            recalculate_confidence = validation_helpers.recalculate_confidence
-        else:
-            raise ImportError(f"validation_helpers.py not found. Error: {e}")
+from src.data_fetcher import fetch_stock_data
+from src.validation_helpers import (
+    detect_scale_error,
+    enforce_price_ratio_limits,
+    get_next_trading_day,
+    is_trading_day,
+    recalculate_confidence,
+    validate_history_bounds,
+    validate_price_prediction,
+)
 
 
 def determine_market(symbol: str) -> str:
@@ -79,7 +31,7 @@ def determine_market(symbol: str) -> str:
     銘柄コードから市場を判定
     
     Args:
-        symbol: 銘柄コード（例: 'AAPL', '7203'）
+        symbol: 銘柄コード（例: 'NVDA', '7203'）
     
     Returns:
         str: 'US' or 'JP'
@@ -653,26 +605,20 @@ def _create_sample_data() -> pd.DataFrame:
     # プロンプトの例に基づいたサンプルデータ
     today = date.today()
     us_date = get_next_trading_day(today, 'US')
-    jp_date = get_next_trading_day(today, 'JP')
-
-    symbols = ['AAPL', 'GOOGL', 'MSFT', 'TSLA', '7203', '6758', '8306', '9984']
-    markets = ['US', 'US', 'US', 'US', 'JP', 'JP', 'JP', 'JP']
-    current_prices = [192.15, 135.42, 415.33, 248.27, 2250.5, 15500.0, 1780.0, 6600.0]
-    forecast_prices = [price * 1.015 for price in current_prices]
-    confidences = [0.8, 0.76, 0.82, 0.78, 0.74, 0.85, 0.77, 0.72]
-    history_placeholder: List[List[Dict[str, Any]]] = [[] for _ in symbols]
-    dates = [us_date.strftime('%Y-%m-%d')] * 4 + [jp_date.strftime('%Y-%m-%d')] * 4
+    symbol = 'NVDA'
+    current_price = 452.12
+    forecast_price = round(current_price * 1.02, 2)
+    confidence = 0.82
+    history_placeholder: List[List[Dict[str, Any]]] = [[]]
 
     sample_data = {
-
-        'symbol': symbols,
-        'market': markets,
-        'forecast': [round(value, 2) for value in forecast_prices],
-        'current_price': current_prices,
-        'confidence': confidences,
+        'symbol': [symbol],
+        'market': ['US'],
+        'forecast': [forecast_price],
+        'current_price': [current_price],
+        'confidence': [confidence],
         'history': history_placeholder,
-        'date': dates,
-
+        'date': [us_date.strftime('%Y-%m-%d')],
     }
     return pd.DataFrame(sample_data)
 
@@ -708,7 +654,7 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description='株価予測JSON生成システム')
-    parser.add_argument('--us-symbols', nargs='*', default=[], help='米国株のシンボル')
+    parser.add_argument('--us-symbols', nargs='*', default=['NVDA'], help='米国株のシンボル')
     parser.add_argument('--jp-symbols', nargs='*', default=[], help='日本株のシンボル')
     parser.add_argument('--days-ahead', type=int, default=1, help='予測する営業日数')
     parser.add_argument('--lookback-days', type=int, default=365, help='履歴取得日数')
@@ -730,17 +676,13 @@ def main():
         forecast_df = pd.read_csv(args.csv)
     else:
         logging.info("Fetching historical data for prediction")
-        if fetch_stock_data is None:
-            logging.warning("fetch_stock_data is unavailable, using sample data")
-            history_df = pd.DataFrame()
-        else:
-            history_df = fetch_stock_data(
-                us_symbols=args.us_symbols,
-                jp_symbols=args.jp_symbols,
-                start_date=_parse_optional_date(args.start_date),
-                end_date=_parse_optional_date(args.end_date),
-                lookback_days=args.lookback_days,
-            )
+        history_df = fetch_stock_data(
+            us_symbols=args.us_symbols,
+            jp_symbols=args.jp_symbols,
+            start_date=_parse_optional_date(args.start_date),
+            end_date=_parse_optional_date(args.end_date),
+            lookback_days=args.lookback_days,
+        )
 
         if args.raw_output and 'history_df' in locals() and not history_df.empty:
             raw_path = Path(args.raw_output)
