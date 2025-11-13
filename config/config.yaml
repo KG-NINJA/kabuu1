@@ -5,6 +5,14 @@ model:
   epochs: 10
   lookback_days: 365
 
+nvda:
+  symbol: "NVDA"
+  base_dir: "nvda_learning"
+  reward_threshold: 0.7
+
+features:
+  lookback_days: 90
+
 rl:
   validation_dir: "validation_results"
   prediction_dir: "prediction_results"
@@ -14,6 +22,7 @@ schedule:
   prediction_time: "09:00"
   model_review_day: "sunday"
   model_review_time: "22:00"
+  actual_price_time: "16:30"
 
 logging:
   level: "INFO"
