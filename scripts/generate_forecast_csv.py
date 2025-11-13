@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Generate a lightweight NVDA-focused forecast CSV using the shared data fetcher.
 
+
 This script retrieves historical price data through :mod:`src.data_fetcher`
 so that local runs and the GitHub Actions workflows share the exact same
 logic, including the deterministic sample fallback when the network is not
@@ -23,6 +24,7 @@ from src.validation_helpers import get_next_trading_day
 
 DEFAULT_TARGET_SYMBOL = "NVDA"
 TARGET_SYMBOL = DEFAULT_TARGET_SYMBOL
+
 
 FORECAST_COLUMNS = [
     "symbol",
@@ -67,6 +69,7 @@ def build_forecast_table(
         original behaviour of including all symbols present in *history*.
     """
 
+
     if history is None or history.empty:
         return pd.DataFrame(columns=FORECAST_COLUMNS)
 
@@ -100,6 +103,7 @@ def build_forecast_table(
 
         confidence = _calculate_confidence(close_series)
 
+
         last_trading_day = group["date"].iloc[-1].date()
         forecast_date = last_trading_day
         for _ in range(max(days_ahead, 1)):
@@ -108,6 +112,7 @@ def build_forecast_table(
         records.append(
             {
                 "symbol": symbol_str,
+
                 "market": str(market),
                 "date": forecast_date.isoformat(),
                 "forecast": round(float(forecast_price), 2),
@@ -128,6 +133,7 @@ def collect_forecasts(
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
     target_symbol: Optional[str] = DEFAULT_TARGET_SYMBOL,
+
 ) -> pd.DataFrame:
     """Fetch history for the requested symbols and build the forecast table."""
 
@@ -145,18 +151,21 @@ def collect_forecasts(
     )
 
 
+
 def _create_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Generate forecast CSV")
     parser.add_argument(
         "--us-symbols",
         nargs="*",
         default=[TARGET_SYMBOL],
+
         help="US stock symbols",
     )
     parser.add_argument(
         "--jp-symbols",
         nargs="*",
         default=[],
+
         help="JP stock symbols (without .T)",
     )
     parser.add_argument("--output", type=str, default="forecast_data.csv")
@@ -173,6 +182,7 @@ def _create_argument_parser() -> argparse.ArgumentParser:
             "Pass 'ALL' or an empty string to include every fetched symbol."
         ),
     )
+
     return parser
 
 
@@ -191,6 +201,7 @@ def main() -> None:
         "🎯 Target symbol: "
         f"{args.target_symbol if args.target_symbol not in (None, '') else 'ALL'}"
     )
+
     print(f"📈 Lookback days: {args.lookback_days}")
     print(f"📅 Days ahead: {args.days_ahead}")
     print()
@@ -208,6 +219,7 @@ def main() -> None:
             or args.target_symbol.upper() == "ALL"
             else args.target_symbol
         ),
+
     )
 
     if forecast_table.empty:

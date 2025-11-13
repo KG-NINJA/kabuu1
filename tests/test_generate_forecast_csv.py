@@ -18,6 +18,7 @@ def _history_frame() -> pd.DataFrame:
             "date": dates,
             "close": [100.0, 101.0, 102.0],
             "symbol": [generator.TARGET_SYMBOL] * 3,
+
             "market": ["US", "US", "US"],
         }
     )
@@ -101,3 +102,4 @@ def test_build_forecast_table_all_symbols():
 
     assert set(filtered["symbol"]) == {generator.TARGET_SYMBOL}
     assert set(all_symbols["symbol"]) == {generator.TARGET_SYMBOL, "AAPL"}
+

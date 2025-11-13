@@ -31,6 +31,7 @@ def test_resolve_symbol_adds_suffix_for_jp():
     assert data_fetcher._resolve_symbol("NVDA", "US") == "NVDA"  # type: ignore[attr-defined]
 
 
+
 @patch("src.data_fetcher.yf.download")
 def test_fetch_stock_data_uses_live_data(mock_download):
     """The fetcher normalises the downloaded frame into a tidy format."""
@@ -39,6 +40,7 @@ def test_fetch_stock_data_uses_live_data(mock_download):
 
     frame = data_fetcher.fetch_stock_data(
         us_symbols=["NVDA"],
+
         jp_symbols=[],
         start_date=date(2024, 1, 1),
         end_date=date(2024, 1, 3),
@@ -56,6 +58,7 @@ def test_fetch_stock_data_uses_live_data(mock_download):
         "market",
     ]
     assert frame.iloc[0]["symbol"] == "NVDA"
+
     assert frame.iloc[0]["market"] == "US"
 
 
@@ -65,6 +68,7 @@ def test_fetch_stock_data_falls_back_to_sample(mock_download):  # noqa: ARG001
 
     frame = data_fetcher.fetch_stock_data(
         us_symbols=["NVDA"],
+
         jp_symbols=["7203"],
         start_date=date(2024, 1, 1),
         end_date=date(2024, 1, 3),

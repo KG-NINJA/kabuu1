@@ -160,6 +160,7 @@ class PredictionModel:
         frame["date"] = pd.to_datetime(frame["date"])
         frame.sort_values("date", inplace=True)
 
+
         # GitHub Actions 上で `close` 列が DataFrame や配列になり TypeError が
         # 発生したため、あらゆるケースに対応して 1 次元の Series として
         # 正規化してから数値変換を行う。これにより学習データが欠損しても
@@ -595,6 +596,7 @@ def main() -> None:
         help="設定ファイルのパス。未指定の場合は config/config.yaml を使用",
     )
     parser.add_argument(
+
         "--mode",
         choices=["daemon", "cycle"],
         default="daemon",
@@ -631,6 +633,7 @@ def main() -> None:
     args = parser.parse_args()
 
     config = Config(args.config)
+
     setup_logging(config._config)
     pipeline = PredictionPipeline(config)
 
