@@ -12,7 +12,7 @@ import time
 from datetime import UTC, datetime, timedelta
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import schedule
 import yaml  # type: ignore[import-untyped]
@@ -22,6 +22,7 @@ from sklearn.linear_model import LinearRegression
 
 # プロジェクトルートをパスに追加（強化学習モジュールを参照するため）
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config" / "config.yaml"
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
@@ -60,16 +61,25 @@ def setup_logging(config: dict) -> None:
 class Config:
     """YAMLベースの設定管理クラス"""
 
-    def __init__(self, config_path: Optional[str] = None) -> None:
-        # デフォルトの設定ファイルパスをスクリプト配置ディレクトリ基準に設定
-        self.config_path: Path
-        if config_path is None:
-            # スクリプトの配置ディレクトリを基準に config.yaml を探す
-            self.config_path = Path(__file__).resolve().parent / "config.yaml"
-        else:
-            self.config_path = Path(config_path)
+    def __init__(self, config_path: Optional[Union[str, Path]] = None) -> None:
+        # デフォルトの設定ファイルパスをリポジトリルート基準で解決
+        self.config_path = self._resolve_config_path(config_path)
         self._config: Dict[str, Any] = {}
         self.load()
+
+    @staticmethod
+    def _resolve_config_path(
+        config_path: Optional[Union[str, Path]]
+    ) -> Path:
+        """設定ファイルの場所を解決する"""
+
+        if config_path is None:
+            return DEFAULT_CONFIG_PATH
+
+        candidate = Path(config_path)
+        if not candidate.is_absolute():
+            candidate = PROJECT_ROOT / candidate
+        return candidate
 
     def load(self) -> None:
         """設定ファイルを読み込む（存在しない場合は空設定）"""
@@ -123,7 +133,20 @@ class PredictionModel:
         frame = history.copy()
         frame["date"] = pd.to_datetime(frame["date"])
         frame.sort_values("date", inplace=True)
-        frame["close"] = pd.to_numeric(frame["close"], errors="coerce")
+
+
+        # GitHub Actions 上で `close` 列が DataFrame や配列になり TypeError が
+        # 発生したため、あらゆるケースに対応して 1 次元の Series として
+        # 正規化してから数値変換を行う。これにより学習データが欠損しても
+        # 無視され、スタブではなく実データでも安定する。
+        raw_close = frame.get("close")
+        if isinstance(raw_close, pd.DataFrame):
+            raw_close = raw_close.iloc[:, 0]
+        elif not isinstance(raw_close, pd.Series):
+            raw_close = pd.Series(raw_close, index=frame.index)
+
+        frame.loc[:, "close"] = pd.to_numeric(raw_close, errors="coerce")
+
         frame["ma_5"] = frame["close"].rolling(window=5, min_periods=5).mean()
         frame["ma_20"] = frame["close"].rolling(window=20, min_periods=20).mean()
         frame["return_1d"] = frame["close"].pct_change()
@@ -544,6 +567,14 @@ def main() -> None:
         description="NVDA 予測パイプラインの実行モードを制御します"
     )
     parser.add_argument(
+
+        "--config",
+        type=str,
+        default=None,
+        help="設定ファイルのパス。未指定の場合は config/config.yaml を使用",
+    )
+    parser.add_argument(
+
         "--mode",
         choices=["daemon", "cycle"],
         default="daemon",
@@ -579,7 +610,8 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    config = Config()
+    config = Config(args.config)
+
     setup_logging(config._config)
     pipeline = PredictionPipeline(config)
 

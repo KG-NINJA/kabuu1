@@ -35,7 +35,6 @@ kabuu1/
 │       ├── Research Tracking.yml     # 精度追跡ワークフロー
 │       ├── daily_forecast.yml        # 日次予測とアーカイブ
 │       ├── prediction-pipeline-daemon.yml # 常駐スケジューラを定期起動
-
 │       └── prediction-pipeline-ci.yml # 予測パイプラインCI
 ├── requirements.txt              # 依存関係
 ├── Dockerfile                    # Docker設定
@@ -68,6 +67,9 @@ python -m src.prediction_pipeline
 python -m src.prediction_pipeline --duration-minutes 45 --sleep-seconds 30
 # 単発で予測と実績取り込みを行う場合
 python -m src.prediction_pipeline --mode cycle --run-prediction --run-actuals
+# カスタム設定ファイルを指定する場合
+python -m src.prediction_pipeline --config custom/path/to/config.yaml
+
 ```
 
 ### Docker での実行
@@ -166,9 +168,9 @@ pytest tests/test_rl.py -v
 
 以下のワークフローは成果物をアーティファクトとして保存し、リポジトリへ直接 push しません。
 
+
 - **prediction-pipeline-ci.yml**: main ブランチへの push / PR、平日 06:00/21:00 UTC のスケジュールで予測パイプラインを検証します。
 - **daily_forecast.yml**: 毎日 09:00 UTC に実行し、最新予測とアーカイブを生成します。
-
 - **prediction-pipeline-daemon.yml**: 平日 08:55/16:25 UTC に `PredictionPipeline.run` を45分間自動稼働させ、スケジューラ経由で予測と実績取り込みを実行します。
 
 - **Research Tracking.yml**: 平日 22:00 UTC に精度メトリクスとレポートを更新します。
