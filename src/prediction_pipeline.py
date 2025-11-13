@@ -37,30 +37,35 @@ def setup_logging(config: dict) -> None:
     log_config = config.get("logging", {})
     log_file = log_config.get("file", "prediction_pipeline.log")
 
-    log_path = Path(log_file)
-    if not log_path.is_absolute():
-        log_path = PROJECT_ROOT / log_path
-
-    try:
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-    except Exception as exc:
-        logging.getLogger(__name__).warning(
-            "ログディレクトリの作成に失敗したため標準出力のみを使用します: %s",
-            exc,
-        )
+    log_path: Optional[Path]
+    if log_file:
+        candidate = Path(log_file)
+        log_path = candidate if candidate.is_absolute() else PROJECT_ROOT / candidate
+    else:
         log_path = None
 
-    handlers: List[logging.Handler] = [
-        logging.StreamHandler(),
-    ]
+    warnings: List[str] = []
+    if log_path is not None:
+        try:
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+        except Exception as exc:  # pragma: no cover - unexpected but defensive
+            warnings.append(
+                f"ログディレクトリの作成に失敗したため標準出力のみを使用します: {exc}"
+            )
+            log_path = None
 
+    root_logger = logging.getLogger()
+    for handler in list(root_logger.handlers):
+        root_logger.removeHandler(handler)
+
+    handlers: List[logging.Handler] = [logging.StreamHandler()]
     if log_path is not None:
         handlers.insert(
             0,
             RotatingFileHandler(
                 log_path,
-                maxBytes=log_config.get("max_bytes", 5 * 1024 * 1024),
-                backupCount=log_config.get("backup_count", 5),
+                maxBytes=int(log_config.get("max_bytes", 5 * 1024 * 1024)),
+                backupCount=int(log_config.get("backup_count", 5)),
                 encoding="utf-8",
             ),
         )
@@ -70,6 +75,9 @@ def setup_logging(config: dict) -> None:
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         handlers=handlers,
     )
+
+    for message in warnings:
+        logging.getLogger(__name__).warning(message)
 
     # ノイズの多い外部ライブラリのログレベルを抑制
     for lib in ["matplotlib", "tensorflow", "urllib3"]:

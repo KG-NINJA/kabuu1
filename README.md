@@ -86,7 +86,7 @@ docker-compose up -d
 
 ## 🧠 NVDA 専用アーキテクチャ
 
-- `scripts/generate_forecast_csv.py` は NVDA のみを対象にデータを取得
+- `scripts/generate_forecast_csv.py` は デフォルトで NVDA を対象にデータを取得し、`--target-symbol ALL` で複数銘柄をまとめて出力可能
 - `src/nvda_reinforcement.py` が強化学習ログを NVDA 専用ディレクトリへ分離
 - `src/prediction_pipeline.py` は NVDA のスケジュール実行と自動改善を担保
 - LLM プロンプト生成も NVDA の履歴に合わせて最適化
@@ -189,6 +189,12 @@ logs/
 ```bash
 # 依存関係の再インストール
 pip install --upgrade -r requirements.txt
+```
+
+### ログが重複出力される
+```bash
+# 基本設定の再読み込みでルートロガーを初期化してから再実行
+python -m src.prediction_pipeline --config config/config.yaml
 ```
 
 ### TA-Lib のインストール失敗

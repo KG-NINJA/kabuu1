@@ -82,5 +82,22 @@ def test_collect_forecasts_fetches_history(mock_fetch, mock_build):
         end_date=None,
         lookback_days=90,
     )
-    mock_build.assert_called_once_with(mock_history, days_ahead=2)
+    mock_build.assert_called_once_with(
+        mock_history,
+        days_ahead=2,
+        target_symbol=generator.TARGET_SYMBOL,
+    )
     pd.testing.assert_frame_equal(frame, expected)
+
+
+def test_build_forecast_table_all_symbols():
+    primary = _history_frame()
+    secondary = primary.copy()
+    secondary["symbol"] = "AAPL"
+    combined = pd.concat([primary, secondary], ignore_index=True)
+
+    filtered = generator.build_forecast_table(combined, target_symbol=generator.TARGET_SYMBOL)
+    all_symbols = generator.build_forecast_table(combined, target_symbol=None)
+
+    assert set(filtered["symbol"]) == {generator.TARGET_SYMBOL}
+    assert set(all_symbols["symbol"]) == {generator.TARGET_SYMBOL, "AAPL"}
