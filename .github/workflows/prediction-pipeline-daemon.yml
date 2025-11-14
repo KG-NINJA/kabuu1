@@ -2,11 +2,8 @@ name: NVDA Pipeline - Production
 
 on:
   schedule:
-    # 予測生成: 毎営業日 UTC 08:55 (日本時間 17:55)
     - cron: '55 8 * * 1-5'
-    # 実績取り込み: 毎営業日 UTC 16:25 (日本時間 01:25+1)
     - cron: '25 16 * * 1-5'
-    # 週次レビュー: 毎日曜 UTC 22:00 (日本時間 月曜 07:00)
     - cron: '0 22 * * 0'
   workflow_dispatch:
 
@@ -34,19 +31,16 @@ jobs:
           HOUR=$(date -u +%H)
           DAY=$(date -u +%w)
           
-          # UTC 08:55 → 予測実行
           if [ $HOUR -eq 8 ]; then
             echo "run_prediction=true" >> $GITHUB_OUTPUT
             echo "run_actuals=false" >> $GITHUB_OUTPUT
             echo "run_review=false" >> $GITHUB_OUTPUT
             echo "mode_name=📊 Prediction" >> $GITHUB_OUTPUT
-          # UTC 16:25 → 実績取り込み
           elif [ $HOUR -eq 16 ]; then
             echo "run_prediction=false" >> $GITHUB_OUTPUT
             echo "run_actuals=true" >> $GITHUB_OUTPUT
             echo "run_review=false" >> $GITHUB_OUTPUT
             echo "mode_name=💰 Actual Price Collection" >> $GITHUB_OUTPUT
-          # UTC 22:00 日曜 → 週次レビュー
           elif [ $HOUR -eq 22 ] && [ $DAY -eq 0 ]; then
             echo "run_prediction=false" >> $GITHUB_OUTPUT
             echo "run_actuals=false" >> $GITHUB_OUTPUT
@@ -99,7 +93,7 @@ jobs:
             tail -3 reinforcement_learning.log
           fi
 
-      - name: Upload artifacts
+      - name: Upload artifacts (RESTRICTED)
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -109,7 +103,10 @@ jobs:
             reinforcement_learning.log
             nvda_learning/
           if-no-files-found: warn
-          retention-days: 30
+          # 🔒 以下の設定でアクセスを制限
+          retention-days: 7
+          # ⚠️ アーティファクトは内部用のみ
+          # GitHub Settings で "Artifact and log retention" を確認
 
       - name: Notify completion
         if: always()
@@ -118,3 +115,5 @@ jobs:
           echo "✅ Pipeline execution complete"
           echo "Mode: ${{ steps.mode.outputs.mode_name }}"
           echo "Timestamp: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+          echo ""
+          echo "ℹ️  アーティファクトはリポジトリメンテナーのみアクセス可能です"
