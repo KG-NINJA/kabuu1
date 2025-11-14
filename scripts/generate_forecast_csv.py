@@ -74,8 +74,22 @@ def build_forecast_table(
         return pd.DataFrame(columns=FORECAST_COLUMNS)
 
     working = history.copy()
+
+    if isinstance(working, pd.DataFrame) and not working.columns.is_unique:
+        working = working.loc[:, ~working.columns.duplicated()]
+
+    required_columns = {"date", "close", "symbol", "market"}
+    if not required_columns.issubset(working.columns):
+        missing = ", ".join(sorted(required_columns.difference(working.columns)))
+        raise ValueError(
+            "History DataFrame is missing required columns for forecasting: "
+            f"{missing}"
+        )
     working["date"] = pd.to_datetime(working["date"], errors="coerce")
-    working["close"] = pd.to_numeric(working["close"], errors="coerce")
+    close_values = working["close"]
+    if isinstance(close_values, pd.DataFrame):
+        close_values = close_values.apply(pd.to_numeric, errors="coerce").bfill(axis=1).iloc[:, 0]
+    working["close"] = pd.to_numeric(close_values, errors="coerce")
     working.dropna(subset=["date", "close", "symbol"], inplace=True)
 
     if working.empty:
