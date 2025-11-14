@@ -240,6 +240,11 @@ class PredictionModel:
     @staticmethod
     def _augment_with_features(history: pd.DataFrame) -> pd.DataFrame:
         frame = history.copy()
+        
+        # MultiIndexカラムをフラット化
+        if isinstance(frame.columns, pd.MultiIndex):
+            frame.columns = [col[0] if col[1] == '' else col[0] for col in frame.columns]
+        
         frame["date"] = pd.to_datetime(frame["date"])
         frame.sort_values("date", inplace=True)
 
@@ -470,12 +475,13 @@ class PredictionPipeline:
     def check_model_improvement(self) -> None:
         """改善が必要か判定"""
         try:
-            if self.rl_hub is None:
-                return
-            improvement_needed, strategy = self.rl_hub.should_improve()
-            if improvement_needed:
-                logging.info(f"モデル改善が必要と判断: {strategy}")
-                self.retrain_model(strategy)
+            from .nvda_reinforcement import AdaptiveNVDALearner
+            learner = AdaptiveNVDALearner()
+            
+            should_improve, strategy = learner.should_improve_model()
+            if should_improve:
+                logging.info(f"モデル改善を実行します: {strategy.get('adjustments', {}).get('action')}")
+                self.retrain_model(strategy.get('adjustments', {}))
         except Exception as exc:
             logging.error(f"改善判定中にエラー: {exc}", exc_info=True)
 
@@ -543,18 +549,31 @@ class PredictionPipeline:
                 logging.warning("RL hub が利用できないためレビューをスキップします")
                 return
             
-            insights = self.rl_hub.get_learning_insights()
-            logging.info("週次レビューレポート")
-            for key, value in insights.items():
+            # アダプティブラーナーから学習レポートを取得
+            from .nvda_reinforcement import AdaptiveNVDALearner
+            learner = AdaptiveNVDALearner()
+            
+            report = learner.get_learning_report()
+            logging.info("=== 週次学習進捗レポート ===")
+            for key, value in report.items():
                 logging.info(f"- {key}: {value}")
+            
+            # 改善戦略を取得
+            should_improve, strategy = learner.should_improve_model()
+            logging.info(f"モデル改善が必要: {should_improve}")
+            logging.info(f"戦略: {json.dumps(strategy, indent=2, ensure_ascii=False)}")
             
             review_record = {
                 "timestamp": datetime.now().isoformat(),
                 "type": "weekly_review",
-                "insights": insights,
+                "report": report,
+                "strategy": strategy,
             }
             self._append_metrics(review_record)
-            self.check_model_improvement()
+            
+            if should_improve:
+                self.check_model_improvement()
+                
         except Exception as exc:
             logging.error(f"週次レビュー中にエラー: {exc}", exc_info=True)
 

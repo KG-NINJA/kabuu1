@@ -1,14 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a lightweight NVDA-focused forecast CSV using the shared data fetcher.
-
-
-This script retrieves historical price data through :mod:`src.data_fetcher`
-so that local runs and the GitHub Actions workflows share the exact same
-logic, including the deterministic sample fallback when the network is not
-available.  The resulting CSV now contains the current price column expected
-by ``src.predict`` which allows the validation pipeline to consume the live
-forecasts without falling back to mock data.
-"""
+"""Generate a lightweight NVDA-focused forecast CSV using the shared data fetcher."""
 
 from __future__ import annotations
 
@@ -69,15 +60,21 @@ def build_forecast_table(
         original behaviour of including all symbols present in *history*.
     """
 
-
     if history is None or history.empty:
         return pd.DataFrame(columns=FORECAST_COLUMNS)
 
     working = history.copy()
 
+    # 1. Handle MultiIndex columns (common from data fetching libraries)
+    if isinstance(working.columns, pd.MultiIndex):
+        # Flatten by using the first level (e.g., 'Close', 'Volume')
+        working.columns = [col[0] if col[1] == '' else col[0] for col in working.columns]
+
+    # 2. Handle duplicate columns (e.g., after flattening)
     if isinstance(working, pd.DataFrame) and not working.columns.is_unique:
         working = working.loc[:, ~working.columns.duplicated()]
 
+    # 3. Check for required columns
     required_columns = {"date", "close", "symbol", "market"}
     if not required_columns.issubset(working.columns):
         missing = ", ".join(sorted(required_columns.difference(working.columns)))
@@ -85,11 +82,16 @@ def build_forecast_table(
             "History DataFrame is missing required columns for forecasting: "
             f"{missing}"
         )
+
+    # 4. Convert types
     working["date"] = pd.to_datetime(working["date"], errors="coerce")
-    close_values = working["close"]
-    if isinstance(close_values, pd.DataFrame):
-        close_values = close_values.apply(pd.to_numeric, errors="coerce").bfill(axis=1).iloc[:, 0]
-    working["close"] = pd.to_numeric(close_values, errors="coerce")
+
+    # Ensure 'close' is a Series. If it was still a DataFrame, pick the first column.
+    if isinstance(working["close"], pd.DataFrame):
+        working["close"] = working["close"].iloc[:, 0]
+
+    working["close"] = pd.to_numeric(working["close"], errors="coerce")
+    
     working.dropna(subset=["date", "close", "symbol"], inplace=True)
 
     if working.empty:
@@ -117,7 +119,6 @@ def build_forecast_table(
 
         confidence = _calculate_confidence(close_series)
 
-
         last_trading_day = group["date"].iloc[-1].date()
         forecast_date = last_trading_day
         for _ in range(max(days_ahead, 1)):
@@ -126,7 +127,6 @@ def build_forecast_table(
         records.append(
             {
                 "symbol": symbol_str,
-
                 "market": str(market),
                 "date": forecast_date.isoformat(),
                 "forecast": round(float(forecast_price), 2),
@@ -147,7 +147,6 @@ def collect_forecasts(
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
     target_symbol: Optional[str] = DEFAULT_TARGET_SYMBOL,
-
 ) -> pd.DataFrame:
     """Fetch history for the requested symbols and build the forecast table."""
 
@@ -165,21 +164,18 @@ def collect_forecasts(
     )
 
 
-
 def _create_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Generate forecast CSV")
     parser.add_argument(
         "--us-symbols",
         nargs="*",
         default=[TARGET_SYMBOL],
-
         help="US stock symbols",
     )
     parser.add_argument(
         "--jp-symbols",
         nargs="*",
         default=[],
-
         help="JP stock symbols (without .T)",
     )
     parser.add_argument("--output", type=str, default="forecast_data.csv")
@@ -233,7 +229,6 @@ def main() -> None:
             or args.target_symbol.upper() == "ALL"
             else args.target_symbol
         ),
-
     )
 
     if forecast_table.empty:
