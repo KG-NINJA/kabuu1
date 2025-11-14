@@ -3,8 +3,6 @@
 強化学習との連携やスケジューリングを統合
 """
 
-from __future__ import annotations
-
 import argparse
 import json
 import logging
@@ -12,61 +10,12 @@ import logging.handlers
 import sys
 import time
 from datetime import UTC, datetime, timedelta
-from functools import partial
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
+import schedule
 import yaml
-
-try:
-    import schedule
-except ModuleNotFoundError:  # pragma: no cover - fallback executed when dependency missing
-    class _StubJob:
-        """Minimal stub replicating the API used from the schedule package."""
-
-        def __init__(self, scheduler: "_StubSchedule") -> None:
-            self._scheduler = scheduler
-
-        # schedule.every().day ...
-        def day(self) -> "_StubJob":
-            return self
-
-        def at(self, _time: str) -> "_StubJob":
-            return self
-
-        def do(self, func, *args, **kwargs):
-            job = partial(func, *args, **kwargs)
-            self._scheduler._jobs.append(job)
-            logging.getLogger(__name__).warning(
-                "schedule パッケージが見つからないためスタブを使用します。"
-                "run_pending() 呼び出し時に即時実行します: %s",
-                getattr(func, "__name__", repr(func)),
-            )
-            return job
-
-        def __getattr__(self, _name: str) -> "_StubJob":
-            # サポートされていない属性もチェーンで扱えるようにする
-            return self
-
-    class _StubSchedule:
-        def __init__(self) -> None:
-            self._jobs: List = []
-
-        def every(self) -> _StubJob:
-            return _StubJob(self)
-
-        def run_pending(self) -> None:
-            while self._jobs:
-                job = self._jobs.pop(0)
-                try:
-                    job()
-                except Exception:
-                    logging.getLogger(__name__).exception(
-                        "スタブスケジューラーでジョブ実行中にエラーが発生しました"
-                    )
-
-    schedule = _StubSchedule()
 
 import pandas as pd
 from sklearn.linear_model import LinearRegression
@@ -240,6 +189,11 @@ class PredictionModel:
     @staticmethod
     def _augment_with_features(history: pd.DataFrame) -> pd.DataFrame:
         frame = history.copy()
+        
+        # MultiIndexカラムをフラット化
+        if isinstance(frame.columns, pd.MultiIndex):
+            frame.columns = [col[0] if col[1] == '' else col[0] for col in frame.columns]
+        
         frame["date"] = pd.to_datetime(frame["date"])
         frame.sort_values("date", inplace=True)
 
