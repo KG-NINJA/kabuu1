@@ -64,18 +64,34 @@ def build_forecast_table(
         return pd.DataFrame(columns=FORECAST_COLUMNS)
 
     working = history.copy()
-    
-    # MultiIndex カラムをフラット化
+
+    # 1. Handle MultiIndex columns (common from data fetching libraries)
     if isinstance(working.columns, pd.MultiIndex):
+        # Flatten by using the first level (e.g., 'Close', 'Volume')
         working.columns = [col[0] if col[1] == '' else col[0] for col in working.columns]
-    
+
+    # 2. Handle duplicate columns (e.g., after flattening)
+    if isinstance(working, pd.DataFrame) and not working.columns.is_unique:
+        working = working.loc[:, ~working.columns.duplicated()]
+
+    # 3. Check for required columns
+    required_columns = {"date", "close", "symbol", "market"}
+    if not required_columns.issubset(working.columns):
+        missing = ", ".join(sorted(required_columns.difference(working.columns)))
+        raise ValueError(
+            "History DataFrame is missing required columns for forecasting: "
+            f"{missing}"
+        )
+
+    # 4. Convert types
     working["date"] = pd.to_datetime(working["date"], errors="coerce")
-    
-    # close カラムが DataFrame の場合は Series に変換
+
+    # Ensure 'close' is a Series. If it was still a DataFrame, pick the first column.
     if isinstance(working["close"], pd.DataFrame):
         working["close"] = working["close"].iloc[:, 0]
-    
+
     working["close"] = pd.to_numeric(working["close"], errors="coerce")
+    
     working.dropna(subset=["date", "close", "symbol"], inplace=True)
 
     if working.empty:
