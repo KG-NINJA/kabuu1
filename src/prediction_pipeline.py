@@ -78,6 +78,15 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from .data_fetcher import fetch_stock_data
 
+try:
+    from .rl_enhancement import (
+        AdvancedReinforcementLogger,
+        WeeklyReviewGenerator,
+    )
+except ImportError:  # pragma: no cover - optional dependency
+    AdvancedReinforcementLogger = None
+    WeeklyReviewGenerator = None
+
 
 def setup_logging(config: dict) -> None:
     """ロギング設定を初期化"""
@@ -356,6 +365,16 @@ class PredictionPipeline:
             self._load_pending_predictions()
         )
 
+        if AdvancedReinforcementLogger is not None:
+            self.rl_logger = AdvancedReinforcementLogger(
+                log_path=Path("reinforcement_learning.log")
+            )
+            self.weekly_review_generator = WeeklyReviewGenerator(self.rl_logger)
+            logging.info("拡張 RL ロガーを初期化しました")
+        else:
+            self.rl_logger = None
+            self.weekly_review_generator = None
+
         self.setup_scheduler()
         logging.info("予測パイプラインを初期化しました")
 
@@ -452,7 +471,28 @@ class PredictionPipeline:
                             model_params=self.model.get_params(),
                         )
                         record["reward"] = reward
-                    
+
+                    if self.rl_logger is not None:
+                        self.rl_logger.record_detailed_outcome(
+                            ticker=ticker,
+                            predicted_price=predicted_price,
+                            actual_price=actual_price,
+                            confidence=float(record.get("confidence", 0.5)),
+                            model_version=self.model.last_trained_at or "v1.0",
+                            lookback_period=int(
+                                self.config.get("model.lookback_days", 365)
+                            ),
+                            learning_rate=float(
+                                self.config.get("model.learning_rate", 0.001)
+                            ),
+                            data_quality="good",
+                            reward=record.get("reward"),
+                            metadata={
+                                "prediction_timestamp": record.get("timestamp"),
+                                "features": record.get("features", {}),
+                            },
+                        )
+
                     self._append_metrics(record)
                     logging.info(
                         f"{ticker} の実際値 {actual_price:.2f} を反映"
@@ -570,10 +610,21 @@ class PredictionPipeline:
                 "strategy": strategy,
             }
             self._append_metrics(review_record)
-            
+
+            if self.rl_logger is not None and self.weekly_review_generator is not None:
+                logging.info("拡張版 Weekly Review を生成中...")
+                summary_path = self.rl_logger.export_daily_summary()
+                logging.info(f"日次サマリーを保存: {summary_path}")
+                review_path = self.weekly_review_generator.generate_and_save()
+                logging.info(f"拡張版 Weekly Review を保存: {review_path}")
+                full_review = self.weekly_review_generator.generate_weekly_review()
+                recommendations = full_review.get("recommendations", [])
+                for i, rec in enumerate(recommendations, 1):
+                    logging.info(f"  {i}. {rec}")
+
             if should_improve:
                 self.check_model_improvement()
-                
+
         except Exception as exc:
             logging.error(f"週次レビュー中にエラー: {exc}", exc_info=True)
 
